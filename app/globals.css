@@ -1,26 +1,141 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --display: var(--font-bricolage), "Bricolage Grotesque", sans-serif;
+  --mono: var(--font-space-mono), "Space Mono", monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Global rules carried over from the prototype <helmet> */
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  margin: 0;
+  background: oklch(0.97 0.02 95);
+}
+a {
+  color: oklch(0.55 0.2 300);
+  text-decoration: none;
+}
+a:hover {
+  color: oklch(0.45 0.2 300);
+}
+* {
+  box-sizing: border-box;
+}
+input,
+select {
+  font-family: inherit;
+}
+
+/* Links used as layout/cards must not pick up the purple link colour */
+a.nl,
+a.nl:hover {
+  color: inherit;
+}
+
+/* style-hover equivalents from the prototype */
+.nav-chip:hover {
+  background: #fff !important;
+}
+.tile-hover:hover {
+  transform: translateY(-3px);
+}
+.card-hover:hover {
+  box-shadow: 0 14px 34px oklch(0.55 0.2 300 / 0.16);
+}
+
+/* ---- Interactivity ---- */
+.tile-hover,
+.card-hover,
+.nav-chip,
+.btn-hover,
+.float-tile,
+.chip-hover {
+  transition: transform 0.22s ease, box-shadow 0.22s ease, background 0.2s ease;
+}
+.tile-hover:hover {
+  box-shadow: 0 14px 30px oklch(0.3 0.1 300 / 0.14);
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+}
+.btn-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 22px oklch(0.3 0.1 300 / 0.18);
+}
+.btn-hover:active {
+  transform: translateY(0);
+}
+.chip-hover:hover {
+  background: oklch(0.55 0.2 300) !important;
+  color: #fff !important;
+  transform: translateY(-2px);
+}
+.float-tile {
+  animation: floaty 6s ease-in-out infinite;
+}
+.float-tile:nth-child(2) {
+  animation-delay: -2s;
+}
+.float-tile:nth-child(3) {
+  animation-delay: -4s;
+}
+.float-tile:hover {
+  transform: scale(1.03) rotate(-1deg);
+  animation-play-state: paused;
+  box-shadow: 0 18px 40px oklch(0.3 0.1 300 / 0.2);
+}
+@keyframes floaty {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -8px; }
+}
+.pulse-dot {
+  animation: pulse 1.6s ease-out infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 oklch(0.75 0.16 40 / 0.6); }
+  100% { box-shadow: 0 0 0 10px oklch(0.75 0.16 40 / 0); }
+}
+.tile-arrow {
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.tile-hover:hover .tile-arrow {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .float-tile, .pulse-dot { animation: none; }
+}
+
+/* ---- Trusted-by marquee ---- */
+.marquee {
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 32s linear infinite;
+}
+.marquee:hover .marquee-track {
+  animation-play-state: paused;
+}
+.brand {
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+.brand:hover {
+  color: oklch(0.55 0.2 300) !important;
+  transform: scale(1.06);
+}
+@keyframes marquee {
+  to { transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
+}
+
+/* ---- Auth forms ---- */
+.field:focus {
+  border-color: oklch(0.55 0.2 300) !important;
+  box-shadow: 0 0 0 4px oklch(0.55 0.2 300 / 0.14);
 }
