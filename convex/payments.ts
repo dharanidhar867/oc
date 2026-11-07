@@ -8,11 +8,13 @@ import { internalMutation, internalQuery, mutation, query } from "./_generated/s
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import { owns } from "./learning";
-import { getViewer, requireRole, sha256Hex } from "./model";
+import { MIN_PRICE_INR } from "./limits";
+import { getViewer, rateLimit, requireRole, sha256Hex } from "./model";
 
 const MAX_CART = 50;
 const ORDER_TTL_MS = 30 * 60 * 1000;
 const ORDERS_PER_HOUR = 10;
+const CHECKOUTS_PER_HOUR = 20;
 const HOUR_MS = 60 * 60 * 1000;
 const CURRENCY = "inr";
 
@@ -41,6 +43,10 @@ export const createOrder = mutation({
     const me = await requireRole(ctx, token, "student");
     const items = await priceCart(ctx, me._id);
     if (items.length === 0) return { ok: false as const, error: "Your cart is empty." };
+    // The payment provider charges a minimum of ₹49; a smaller total would be charged ₹49 and never match the order.
+    if (items.reduce((n, i) => n + i.cents, 0) < MIN_PRICE_INR * 100) {
+      return { ok: false as const, error: `The minimum order is ₹${MIN_PRICE_INR}. Add another course to check out.` };
+    }
 
     const now = Date.now();
     const cartHash = await sha256Hex(items.map((i) => `${i.courseId}:${i.cents}`).join("|"));
@@ -132,7 +138,7 @@ export const markPaid = internalMutation({
 
 /** Marks an order paid after re-checking the amount and currency. Safe to call twice (webhooks repeat). */
 async function settle(ctx: MutationCtx, o: Doc<"orders">, paymentId: string, paidCents: number, currency: string) {
-  if (o.status === "paid") return;
+  if (o.status === "paid" || o.status === "refunded") return; // a late/retried success webhook must never re-grant a refunded order
   if (paidCents !== o.totalCents || currency.toLowerCase() !== o.currency) throw new ConvexError("Amount mismatch.");
   await ctx.db.patch(o._id, { status: "paid", paymentId, paidAt: Date.now() });
   for (const i of o.items) {
@@ -166,6 +172,12 @@ export const findOrder = internalQuery({
     const id = orderId ? ctx.db.normalizeId("orders", orderId) : null;
     return id ? await ctx.db.get(id) : null;
   },
+});
+
+/** INTERNAL: per-buyer limit on opening payment pages (each one is a call to the payment provider). */
+export const allowCheckoutAttempt = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => await rateLimit(ctx, `checkout:${userId}`, CHECKOUTS_PER_HOUR, HOUR_MS),
 });
 
 /** INTERNAL: remembers the gateway's checkout session for an order. */

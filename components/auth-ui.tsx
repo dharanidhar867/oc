@@ -131,7 +131,8 @@ export function Field({ label, value, onChange, error, type = "text", placeholde
         </label>
         {right}
       </div>
-      <div style={{ position: "relative" }}>
+      {/* Re-keyed on a new error so the field shakes once */}
+      <div key={error ?? ""} className={error ? "shake" : undefined} style={{ position: "relative" }}>
         <input
           id={id}
           className="field"
@@ -195,10 +196,11 @@ export function SubmitButton({ loading, children, color = T.purple }: { loading:
     <button
       type="submit"
       disabled={loading}
-      className="btn-hover"
-      style={{ width: "100%", background: color, color: color === T.purple ? "#fff" : T.ink, border: 0, borderRadius: 99, padding: 16, fontWeight: 800, fontSize: 16, fontFamily: "inherit", cursor: loading ? "wait" : "pointer", opacity: loading ? 0.75 : 1 }}
+      className={`btn-hover${loading ? " busy" : ""}`}
+      style={{ width: "100%", background: color, color: color === T.purple || loading ? "#fff" : T.ink, border: 0, borderRadius: 99, padding: 15, fontWeight: 800, fontSize: 16, fontFamily: "inherit", cursor: loading ? "wait" : "pointer", transition: "color .3s" }}
     >
-      {loading ? "Please wait…" : children}
+      <i className="btn-fill" aria-hidden style={{ background: color === T.purple ? T.ink : T.purple }} />
+      <span style={{ position: "relative" }}>{loading ? "Please wait…" : children}</span>
     </button>
   );
 }

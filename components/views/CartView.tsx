@@ -10,6 +10,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { errorMessage } from "@/lib/upload";
 import { DISPLAY, T } from "@/lib/theme";
 import { useAuth } from "../auth";
+import { Doodle, ticket } from "../sticker-fx";
 
 export default function CartView() {
   const { token } = useAuth();
@@ -18,7 +19,11 @@ export default function CartView() {
   const checkoutM = useMutation(api.payments.createOrder);
   const router = useRouter();
   const [note, setNote] = useState("");
-  const remove = (id: string) => token && removeM({ token, courseId: id as Id<"submissions"> }).catch((e) => setNote(errorMessage(e)));
+  const remove = (id: string, title: string) =>
+    token &&
+    removeM({ token, courseId: id as Id<"submissions"> })
+      .then(() => ticket("Removed from cart", title))
+      .catch((e) => setNote(errorMessage(e)));
   const checkout = async () => {
     if (!token) return;
     try {
@@ -42,9 +47,11 @@ export default function CartView() {
 
       {empty && (
         <div style={{ background: "#fff", borderRadius: 30, padding: 50, textAlign: "center" }}>
-          <div style={{ fontSize: 18, marginBottom: 16 }}>Your cart is empty.</div>
-          <Link href="/courses" className="nl" style={{ background: T.orange, fontWeight: 700, padding: "14px 26px", borderRadius: 99, cursor: "pointer", display: "inline-block" }}>
-            Keep shopping
+          <Doodle />
+          <div style={{ font: `800 24px ${DISPLAY}` }}>Your cart is empty</div>
+          <div style={{ color: T.muted, margin: "6px 0 20px" }}>Find something you’ll love learning.</div>
+          <Link href="/courses" className="nl btn-hover" style={{ background: T.orange, fontWeight: 700, padding: "13px 26px", borderRadius: 99, cursor: "pointer", display: "inline-block" }}>
+            Keep shopping <span className="arr">→</span>
           </Link>
         </div>
       )}
@@ -53,8 +60,8 @@ export default function CartView() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 30, alignItems: "flex-start" }}>
           <div style={{ flex: "1 1 520px", display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ color: T.muted2 }}>{items.length} course{items.length === 1 ? "" : "s"} in your cart</div>
-            {items.map((c) => (
-              <div key={c.id} style={{ background: "#fff", borderRadius: 26, padding: 14, display: "grid", gridTemplateColumns: "150px minmax(0,1fr) auto", gap: 18, alignItems: "center" }}>
+            {items.map((c, i) => (
+              <div key={c.id} className="card-hover" style={{ background: "#fff", borderRadius: 26, padding: 14, display: "grid", gridTemplateColumns: "150px minmax(0,1fr) auto", gap: 18, alignItems: "center", ["--r" as string]: `${i % 2 ? 0.35 : -0.35}deg` }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={c.thumbnail} alt="" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 16 }} />
                 <div>
@@ -65,7 +72,7 @@ export default function CartView() {
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ font: `800 20px ${DISPLAY}` }}>{money(c.price)}</div>
-                  <div onClick={() => remove(c.id)} style={{ fontSize: 13, color: T.danger, cursor: "pointer", marginTop: 6, fontWeight: 700 }}>
+                  <div onClick={() => remove(c.id, c.title)} style={{ fontSize: 13, color: T.danger, cursor: "pointer", marginTop: 6, fontWeight: 700 }}>
                     Remove
                   </div>
                 </div>
@@ -88,9 +95,9 @@ export default function CartView() {
             <button
               onClick={checkout}
               className="btn-hover"
-              style={{ width: "100%", border: 0, background: T.purple, color: "#fff", fontWeight: 800, fontSize: 16, fontFamily: "inherit", padding: 16, borderRadius: 99, cursor: "pointer" }}
+              style={{ width: "100%", border: 0, background: T.purple, color: "#fff", fontWeight: 800, fontSize: 16, fontFamily: "inherit", padding: 14, borderRadius: 99, cursor: "pointer" }}
             >
-              Checkout
+              Checkout <span className="arr">→</span>
             </button>
             {note && (
               <div role="status" style={{ marginTop: 14, background: T.bg, borderRadius: 16, padding: 14, fontSize: 14, lineHeight: 1.5, color: T.body }}>

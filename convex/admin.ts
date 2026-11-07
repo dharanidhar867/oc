@@ -5,7 +5,6 @@ import { mutation, query } from "./_generated/server";
 import { MIN_COURSE_SECONDS, MIN_LESSONS } from "./limits";
 import { requireRole } from "./model";
 import { deleteCourse, loadTree } from "./tree";
-import { watchUrl } from "./uploads";
 
 const audit = (ctx: MutationCtx, admin: string, action: string, target: string) =>
   ctx.db.insert("audit", { at: Date.now(), admin, action, target });
@@ -68,7 +67,7 @@ export const listSubmissions = query({
     const rows = await ctx.db.query("submissions").withIndex("by_status", (q) => q.eq("status", status)).take(200);
     const out = [];
     for (const s of rows) {
-      const t = await loadTree(ctx, s._id, false);
+      const t = await loadTree(ctx, s._id);
       out.push({ ...s, id: s._id as string, instructorId: s.instructorId as string, lessonCount: t.lessonCount, approvedLessons: t.approved, pendingLessons: t.pending, totalSeconds: t.totalSeconds });
     }
     return out.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -82,8 +81,8 @@ export const getCourseForReview = query({
     await requireRole(ctx, token, "admin");
     const course = await ctx.db.get(id);
     if (!course) return null;
-    const tree = await loadTree(ctx, id, true);
-    return { id: id as string, title: course.title, promoUrl: await watchUrl(ctx, { assetId: course.promoAssetId, videoId: course.promoVideoId }), ...tree };
+    const tree = await loadTree(ctx, id);
+    return { id: id as string, title: course.title, hasPromo: !!(course.promoAssetId || course.promoVideoId), ...tree };
   },
 });
 
@@ -108,7 +107,7 @@ export const decideCourse = mutation({
     if (!s || s.status !== "in_review") throw new ConvexError("This course isn't awaiting review.");
     const why = decision === "rejected" ? cleanReason(reason) : undefined;
     if (decision === "live") {
-      const t = await loadTree(ctx, id, false);
+      const t = await loadTree(ctx, id);
       if (t.lessonCount < MIN_LESSONS || t.totalSeconds < MIN_COURSE_SECONDS) throw new ConvexError("This course doesn’t meet the minimum content requirements.");
       if (t.approved !== t.lessonCount) throw new ConvexError("Review and approve every lesson before publishing.");
     }

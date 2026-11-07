@@ -101,10 +101,10 @@ function LessonReview({ courseId }: { courseId: string }) {
       </div>
       <div style={{ fontSize: 13, color: T.muted, marginBottom: 8 }}>Watch each lesson — the promo is only a preview and doesn’t count.</div>
       {err && <div style={{ color: T.danger, fontWeight: 700, fontSize: 13, marginBottom: 6 }}>{err}</div>}
-      {data.promoUrl && (
+      {data.hasPromo && (
         <div style={{ marginBottom: 10 }}>
           <span onClick={() => setPlaying(playing === "promo" ? null : "promo")} style={{ fontWeight: 700, fontSize: 13, cursor: "pointer", color: T.purple }}>{playing === "promo" ? "Hide" : "Watch"} promo</span>
-          {playing === "promo" && <VideoPlayer src={data.promoUrl} style={{ maxWidth: 520, borderRadius: 12, marginTop: 6 }} />}
+          {playing === "promo" && <VideoPlayer kind="promo" id={data.id} style={{ maxWidth: 520, borderRadius: 12, marginTop: 6 }} />}
         </div>
       )}
       {data.sections.map((sec) => (
@@ -120,7 +120,7 @@ function LessonReview({ courseId }: { courseId: string }) {
                 {l.status !== "rejected" && <Btn tone="red" onClick={() => setRejecting(rejecting === l.id ? null : l.id)}>Reject…</Btn>}
               </div>
               {l.status === "rejected" && l.reason && <div style={{ fontSize: 13, color: T.danger, marginTop: 4 }}>Rejected: {l.reason}</div>}
-              {playing === l.id && l.videoUrl && <VideoPlayer src={l.videoUrl} style={{ maxWidth: 520, borderRadius: 12, marginTop: 6 }} />}
+              {playing === l.id && l.hasVideo && <VideoPlayer kind="lesson" id={l.id} style={{ maxWidth: 520, borderRadius: 12, marginTop: 6 }} />}
               {rejecting === l.id && (
                 <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
                   <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason shown to the instructor" style={{ flex: 1, padding: "8px 12px", borderRadius: 12, border: "1.5px solid oklch(0.88 0.03 300)", fontFamily: "inherit" }} />

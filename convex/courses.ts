@@ -4,10 +4,10 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { CATS } from "../lib/data";
-import { MAX_PROMO_SECONDS, MIN_COURSE_SECONDS, MIN_LESSONS } from "./limits";
+import { MAX_PRICE_INR, MAX_PROMO_SECONDS, MIN_COURSE_SECONDS, MIN_LESSONS, MIN_PRICE_INR } from "./limits";
 import { requireRole } from "./model";
 import { deleteCourse, loadTree } from "./tree";
-import { claimAsset, discardVideo, watchUrl } from "./uploads";
+import { claimAsset, discardVideo } from "./uploads";
 
 const shape = (s: Doc<"submissions">) => ({ ...s, id: s._id as string, instructorId: s.instructorId as string });
 
@@ -19,7 +19,7 @@ export const listMine = query({
     const rows = await ctx.db.query("submissions").withIndex("by_instructorId", (q) => q.eq("instructorId", me._id)).take(200);
     const out = [];
     for (const s of rows) {
-      const t = await loadTree(ctx, s._id, false);
+      const t = await loadTree(ctx, s._id);
       out.push({ ...shape(s), lessonCount: t.lessonCount, totalSeconds: t.totalSeconds, rejectedLessons: t.rejected });
     }
     return out.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -49,8 +49,8 @@ export const get = query({
   handler: async (ctx, { token, id }) => {
     if (!token) return null;
     const { course } = await ownCourse(ctx, token, id);
-    const tree = await loadTree(ctx, id, true);
-    return { ...shape(course), promoUrl: await watchUrl(ctx, { assetId: course.promoAssetId, videoId: course.promoVideoId }), ...tree };
+    const tree = await loadTree(ctx, id);
+    return { ...shape(course), hasPromo: !!(course.promoAssetId || course.promoVideoId), ...tree };
   },
 });
 
@@ -74,7 +74,7 @@ export const create = mutation({
     if (title.length < 5 || title.length > 120) throw new ConvexError("Title must be 5–120 characters.");
     if (subtitle.length > 200) throw new ConvexError("Subtitle is too long.");
     if (description.length < 60 || description.length > 5000) throw new ConvexError("Description must be 60–5000 characters.");
-    if (!Number.isFinite(a.price) || a.price < 0 || a.price > 100000) throw new ConvexError("Enter a valid price.");
+    if (!Number.isFinite(a.price) || a.price < MIN_PRICE_INR || a.price > MAX_PRICE_INR) throw new ConvexError(`Enter a price between ₹${MIN_PRICE_INR} and ₹${MAX_PRICE_INR.toLocaleString("en-IN")}.`);
     if (!CATS.some((c) => c.name === a.category)) throw new ConvexError("Choose a category from the list."); // the course is listed under this catalog category
     if (a.level.length > 30) throw new ConvexError("Invalid level.");
     if (!/^data:image\/(png|jpeg|webp);base64,/.test(a.thumbnail) || a.thumbnail.length > 700_000) throw new ConvexError("Upload a smaller course image (PNG, JPEG or WebP).");
@@ -109,7 +109,7 @@ export const submitForReview = mutation({
   handler: async (ctx, { token, id }) => {
     const { course } = await ownCourse(ctx, token, id);
     assertEditable(course);
-    const t = await loadTree(ctx, id, false);
+    const t = await loadTree(ctx, id);
     if (t.lessonCount < MIN_LESSONS) throw new ConvexError(`Add at least ${MIN_LESSONS} lesson before submitting.`);
     if (t.totalSeconds < MIN_COURSE_SECONDS) throw new ConvexError(`Lessons must total at least ${MIN_COURSE_SECONDS / 60} minutes (you have ${Math.floor(t.totalSeconds / 60)}).`);
     if (t.sections.some((s) => s.lessons.length === 0)) throw new ConvexError("Remove or fill any empty sections first.");
@@ -132,6 +132,9 @@ export const remove = mutation({
   handler: async (ctx, { token, id }) => {
     const { course } = await ownCourse(ctx, token, id);
     if (course.status === "live" || course.status === "in_review") throw new ConvexError("Withdraw this course before deleting it.");
+    // Students who paid keep lifetime access, so a course with buyers can never be deleted (its videos would vanish for them).
+    const buyer = await ctx.db.query("enrollments").withIndex("by_courseId", (q) => q.eq("courseId", id)).first();
+    if (buyer) throw new ConvexError("Students have bought this course, so it can’t be deleted. Contact support if it needs to be removed.");
     await deleteCourse(ctx, course);
   },
 });

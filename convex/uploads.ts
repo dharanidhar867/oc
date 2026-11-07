@@ -7,16 +7,14 @@
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
 import { action, internalAction, internalMutation } from "./_generated/server";
 import { DAY_MS, LESSON_UPLOADS_PER_DAY, MAX_VIDEO_BYTES, PROMO_UPLOADS_PER_DAY } from "./limits";
 import { requireRole } from "./model";
 
 const GUMLET_API = "https://api.gumlet.com/v1";
+/** Gumlet's hosted player. Playable links are built and SIGNED only in video.ts. */
 export const PLAYER_BASE = "https://play.gumlet.io/embed/";
-
-/** URL students/admins watch a video at (Gumlet's hosted player; handles HLS in every browser). */
-export const playerUrl = (assetId: string) => PLAYER_BASE + assetId;
 
 function gumletEnv() {
   const key = process.env.GUMLET_API_KEY, workspace = process.env.GUMLET_WORKSPACE_ID;
@@ -103,11 +101,6 @@ export const setAssetStatus = internalMutation({
   },
 });
 
-/** Watch URL for a stored video: Gumlet player for new uploads, Convex storage URL for legacy ones. */
-export async function watchUrl(ctx: { storage: QueryCtx["storage"] }, v: { assetId?: string; videoId?: Id<"_storage"> }): Promise<string | null> {
-  if (v.assetId) return playerUrl(v.assetId);
-  return v.videoId ? await ctx.storage.getUrl(v.videoId) : null;
-}
 
 /** Removes whichever kind of stored video a lesson/course has: Gumlet asset (new) or Convex file (legacy). */
 export async function discardVideo(ctx: MutationCtx, v: { assetId?: string; videoId?: Id<"_storage"> }) {
