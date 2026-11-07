@@ -8,6 +8,7 @@ import type { Id } from "@/convex/_generated/dataModel";
 import { DISPLAY, T } from "@/lib/theme";
 import { useAuth } from "../auth";
 import { StatusBadge } from "../StatusBadge";
+import VideoPlayer from "../VideoPlayer";
 
 type Tab = "applications" | "courses" | "live" | "instructors" | "audit";
 
@@ -103,7 +104,7 @@ function LessonReview({ courseId }: { courseId: string }) {
       {data.promoUrl && (
         <div style={{ marginBottom: 10 }}>
           <span onClick={() => setPlaying(playing === "promo" ? null : "promo")} style={{ fontWeight: 700, fontSize: 13, cursor: "pointer", color: T.purple }}>{playing === "promo" ? "Hide" : "Watch"} promo</span>
-          {playing === "promo" && <video src={data.promoUrl} controls preload="metadata" style={{ display: "block", width: "100%", maxWidth: 520, borderRadius: 12, marginTop: 6, background: "#000" }} />}
+          {playing === "promo" && <VideoPlayer src={data.promoUrl} style={{ maxWidth: 520, borderRadius: 12, marginTop: 6 }} />}
         </div>
       )}
       {data.sections.map((sec) => (
@@ -119,7 +120,7 @@ function LessonReview({ courseId }: { courseId: string }) {
                 {l.status !== "rejected" && <Btn tone="red" onClick={() => setRejecting(rejecting === l.id ? null : l.id)}>Reject…</Btn>}
               </div>
               {l.status === "rejected" && l.reason && <div style={{ fontSize: 13, color: T.danger, marginTop: 4 }}>Rejected: {l.reason}</div>}
-              {playing === l.id && l.videoUrl && <video src={l.videoUrl} controls preload="metadata" style={{ display: "block", width: "100%", maxWidth: 520, borderRadius: 12, marginTop: 6, background: "#000" }} />}
+              {playing === l.id && l.videoUrl && <VideoPlayer src={l.videoUrl} style={{ maxWidth: 520, borderRadius: 12, marginTop: 6 }} />}
               {rejecting === l.id && (
                 <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
                   <input autoFocus value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason shown to the instructor" style={{ flex: 1, padding: "8px 12px", borderRadius: 12, border: "1.5px solid oklch(0.88 0.03 300)", fontFamily: "inherit" }} />
@@ -272,10 +273,12 @@ export default function AdminConsole() {
                     <b>{s.title}</b>
                     <div style={{ fontSize: 13, color: T.muted }}>
                       {s.instructorName} · {s.category}
+                      {s.pendingLessons > 0 && <b style={{ color: T.purple }}> · {s.pendingLessons} new lesson{s.pendingLessons === 1 ? "" : "s"} to review</b>}
                     </div>
                   </div>
                   <StatusBadge status={s.status} />
                 </div>
+                {s.pendingLessons > 0 && <LessonReview courseId={s.id} />}
                 <Decision approveLabel="Keep live" rejectLabel="Take down" onApprove={() => {}} onReject={(r) => takeDown(s.id, r)} />
               </div>
             ))

@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CATS, LEVELS } from "@/lib/data";
 import { prepareThumbnail } from "@/lib/image";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import { MAX_PROMO_MIN, MAX_VIDEO_MB, convertAndUpload, errorMessage, fmtDuration, readDuration, videoProblem } from "@/lib/upload";
+import { MAX_PROMO_MIN, MAX_VIDEO_MB, errorMessage, fmtDuration, readDuration, uploadToGumlet, videoProblem } from "@/lib/upload";
 import { DISPLAY, T } from "@/lib/theme";
 import { useAuth } from "../auth";
 import { Checkbox, Field, FormError, Textarea } from "../auth-ui";
@@ -19,7 +19,7 @@ export default function NewCourseForm() {
   const router = useRouter();
   const { token } = useAuth();
   const createM = useMutation(api.courses.create);
-  const uploadUrlM = useMutation(api.uploads.generateUploadUrl);
+  const createUpload = useAction(api.uploads.createUpload);
   const [promo, setPromo] = useState<File | null>(null);
   const [promoSecs, setPromoSecs] = useState(0);
   const [status, setStatus] = useState("");
@@ -27,7 +27,7 @@ export default function NewCourseForm() {
   const [subtitle, setSubtitle] = useState("");
   const [category, setCategory] = useState(CATS[0].name);
   const [level, setLevel] = useState("Beginner");
-  const [price, setPrice] = useState("29.99");
+  const [price, setPrice] = useState("2499");
   const [description, setDescription] = useState("");
   const [thumb, setThumb] = useState("");
   const [rights, setRights] = useState(false);
@@ -63,7 +63,7 @@ export default function NewCourseForm() {
     if (title.trim().length < 8) errs.title = "Give your course a clear title (at least 8 characters).";
     if (subtitle.trim().length < 10) errs.subtitle = "Add a one-line subtitle.";
     const p = Number(price);
-    if (!Number.isFinite(p) || p < 0 || p > 999) errs.price = "Enter a price between 0 and 999.";
+    if (!Number.isFinite(p) || p < 0 || p > 99999) errs.price = "Enter a price between 0 and 99,999.";
     if (description.trim().length < 60) errs.description = `Describe what learners will get (at least 60 characters — ${description.trim().length} so far).`;
     if (!thumb) errs.thumb = errs.thumb || "Upload a course image.";
     if (!promo) errs.promo = errs.promo || `Upload a promo video (up to ${MAX_PROMO_MIN} minutes).`;
@@ -74,7 +74,7 @@ export default function NewCourseForm() {
 
     setBusy(true);
     try {
-      const promoVideoId = (await convertAndUpload(promo!, promoSecs, () => uploadUrlM({ token, kind: "promo" }), setStatus)) as Id<"_storage">;
+      const promoUp = await uploadToGumlet(promo!, () => createUpload({ token, kind: "promo" }), setStatus);
       const r = await createM({
         token,
         title: title.trim(),
@@ -84,7 +84,8 @@ export default function NewCourseForm() {
         price: p,
         description: description.trim(),
         thumbnail: thumb,
-        promoVideoId,
+        promoAssetId: promoUp.assetId,
+        promoSize: promoUp.size,
         promoDuration: promoSecs,
       });
       if (!r.ok) {
@@ -129,7 +130,7 @@ export default function NewCourseForm() {
               ))}
             </select>
           </div>
-          <Field label="Price (USD)" value={price} onChange={setPrice} error={errors.price} type="text" />
+          <Field label="Price (₹ INR)" value={price} onChange={setPrice} error={errors.price} type="text" />
         </div>
         <Textarea label="Description" rows={6} value={description} onChange={setDescription} error={errors.description} placeholder="What will learners build or be able to do after this course?" />
 
@@ -160,7 +161,7 @@ export default function NewCourseForm() {
           {label("Promo video")}
           <input type="file" accept="video/mp4,video/webm" onChange={(e) => onPromo(e.target.files?.[0])} />
           <div style={{ fontSize: 12, color: T.muted, marginTop: 6 }}>
-            MP4 or WebM · up to {MAX_PROMO_MIN} minutes · converted to WebM for fast loading (max {MAX_VIDEO_MB} MB after conversion). Conversion happens in your browser and can take a few minutes for HD video — keep this tab open. This is the free preview shown on your course page — our team reviews your lessons, not just the promo.
+            MP4 video · up to {MAX_PROMO_MIN} minutes · max {MAX_VIDEO_MB} MB. Large HD files can take a few minutes to prepare, so keep this tab open until the upload finishes. This is the free preview shown on your course page — our team reviews your lessons, not just the promo.
           </div>
           {promo && <div style={{ fontSize: 13, fontWeight: 600, marginTop: 6 }}>{promo.name} · {fmtDuration(promoSecs)}</div>}
           {errors.promo && (

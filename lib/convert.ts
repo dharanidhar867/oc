@@ -22,7 +22,7 @@ export async function toWebm(file: File, onPhase?: (p: ConvertPhase) => void, se
   onPhase?.({ phase: "loading" });
   const base = window.location.origin + "/ffmpeg/";
   const { FFmpeg } = await importRuntime(base + "esm/index.js").catch(() => {
-    throw new Error("Couldn’t load the video converter. Refresh the page and try again.");
+    throw new Error("Couldn’t prepare your video. Refresh the page and try again.");
   });
   const ff = new FFmpeg();
   const tail: string[] = []; // last ffmpeg log lines, to explain a failure
@@ -47,7 +47,7 @@ export async function toWebm(file: File, onPhase?: (p: ConvertPhase) => void, se
       "-c:a", "libvorbis", "-b:a", "80k",
       "-f", "webm", "out.webm",
     ]);
-    if (code !== 0) throw new Error("We couldn’t convert that video. Try exporting it again as a standard MP4.");
+    if (code !== 0) throw new Error("We couldn’t process that video. Try exporting it again as a standard MP4.");
     const out = (await ff.readFile("out.webm")) as Uint8Array;
     const bytes = new Uint8Array(out.byteLength);
     bytes.set(out); // copy into a plain ArrayBuffer-backed array
@@ -56,7 +56,7 @@ export async function toWebm(file: File, onPhase?: (p: ConvertPhase) => void, se
     console.error("[quickai] conversion failed", e, tail.join("\n"));
     const why = tail.filter((l) => /error|invalid|unsupported|not found|fail/i.test(l)).slice(-2).join(" ");
     const base = e instanceof Error ? e.message : typeof e === "string" ? e : "";
-    throw new Error((base || "We couldn’t convert that video.") + (why ? ` (${why})` : ""));
+    throw new Error((base || "We couldn’t process that video.") + (why ? ` (${why})` : ""));
   } finally {
     ff.terminate();
   }

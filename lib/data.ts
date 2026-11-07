@@ -33,5 +33,5 @@ export const PAYS: [string, string][] = [
 ];
 export const MINE_TABS = ["All", "Wishlist", "Archived"];
 
-export const money = (n: number) => "$" + n.toFixed(2);
+export const money = (n: number) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n);
 export const fmt = (n: number) => n.toLocaleString("en-US");

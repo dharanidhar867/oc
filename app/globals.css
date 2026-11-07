@@ -139,3 +139,19 @@ a.nl:hover {
   border-color: oklch(0.55 0.2 300) !important;
   box-shadow: 0 0 0 4px oklch(0.55 0.2 300 / 0.14);
 }
+
+/* ---- Course page: content left, buy card right; the buy card moves to the top on narrow screens ---- */
+.course-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 370px;
+  gap: 36px;
+  align-items: start;
+}
+.course-buy {
+  position: sticky;
+  top: 90px;
+}
+@media (max-width: 960px) {
+  .course-layout { grid-template-columns: minmax(0, 1fr); }
+  .course-buy { position: static; order: -1; }
+}

@@ -2,13 +2,14 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DISPLAY, T } from "@/lib/theme";
-import { MAX_LESSON_MIN, MAX_VIDEO_MB, convertAndUpload, errorMessage, fmtDuration, readDuration, videoProblem } from "@/lib/upload";
+import { MAX_LESSON_MIN, MAX_VIDEO_MB, errorMessage, fmtDuration, readDuration, uploadToGumlet, videoProblem } from "@/lib/upload";
 import { useAuth } from "../auth";
 import { StatusBadge } from "../StatusBadge";
+import VideoPlayer from "../VideoPlayer";
 
 // These mirror convex/limits.ts for display only; the server enforces them.
 const MIN_LESSONS = 1;
@@ -22,7 +23,7 @@ const LESSON_COLOR = { pending: ["Awaiting review", T.yellow, T.ink], approved: 
 const errText = (e: unknown) => errorMessage(e);
 
 function AddLesson({ sectionId, token, disabled }: { sectionId: string; token: string; disabled: boolean }) {
-  const uploadUrl = useMutation(api.uploads.generateUploadUrl);
+  const createUpload = useAction(api.uploads.createUpload);
   const addLesson = useMutation(api.lessons.addLesson);
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -46,8 +47,9 @@ function AddLesson({ sectionId, token, disabled }: { sectionId: string; token: s
     setErr("");
     setStatus("Starting…");
     try {
-      const videoId = (await convertAndUpload(file, secs, () => uploadUrl({ token, kind: "lesson" }), setStatus)) as Id<"_storage">;
-      const r = await addLesson({ token, sectionId: sectionId as Id<"sections">, title, videoId, duration: secs });
+      const { assetId, size } = await uploadToGumlet(file, () => createUpload({ token, kind: "lesson" }), setStatus);
+      setStatus("Saving…");
+      const r = await addLesson({ token, sectionId: sectionId as Id<"sections">, title, assetId, size, duration: secs });
       if (!r.ok) setErr(r.error);
       else {
         setTitle("");
@@ -72,14 +74,14 @@ function AddLesson({ sectionId, token, disabled }: { sectionId: string; token: s
       </div>
       {status !== null && <div style={{ fontSize: 13, fontWeight: 700, color: T.purple, marginTop: 6 }}>{status}</div>}
       {file && <div style={{ fontSize: 12, color: T.muted, marginTop: 6 }}>{file.name} · {fmtDuration(secs)} · {(file.size / 1048576).toFixed(0)} MB</div>}
-      <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>MP4 or WebM · up to {MAX_LESSON_MIN} minutes · converted to WebM in your browser (max {MAX_VIDEO_MB} MB after conversion) · 2 lesson uploads per day. HD files can take a while to convert, so keep this tab open — a video that is already WebM uploads straight away.</div>
+      <div style={{ fontSize: 12, color: T.muted, marginTop: 4 }}>MP4 video · up to {MAX_LESSON_MIN} minutes · max {MAX_VIDEO_MB} MB · 2 lesson uploads per day. Keep this tab open until the upload finishes.</div>
       {err && <div role="alert" style={{ color: T.danger, fontSize: 13, fontWeight: 600, marginTop: 6 }}>{err}</div>}
     </div>
   );
 }
 
 function ReplaceVideo({ lessonId, token }: { lessonId: string; token: string }) {
-  const uploadUrl = useMutation(api.uploads.generateUploadUrl);
+  const createUpload = useAction(api.uploads.createUpload);
   const replace = useMutation(api.lessons.replaceLessonVideo);
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -91,8 +93,9 @@ function ReplaceVideo({ lessonId, token }: { lessonId: string; token: string }) 
     setBusy("Starting…");
     setMsg("");
     try {
-      const videoId = (await convertAndUpload(f, s, () => uploadUrl({ token, kind: "lesson" }), setBusy)) as Id<"_storage">;
-      const r = await replace({ token, lessonId: lessonId as Id<"lessons">, videoId, duration: s });
+      const { assetId, size } = await uploadToGumlet(f, () => createUpload({ token, kind: "lesson" }), setBusy);
+      setBusy("Saving…");
+      const r = await replace({ token, lessonId: lessonId as Id<"lessons">, assetId, size, duration: s });
       if (!r.ok) setMsg(r.error);
     } catch (e) {
       setMsg(errText(e));
@@ -134,7 +137,9 @@ export default function CourseEditor({ id }: { id: string }) {
     );
 
   const editable = course.status === "draft" || course.status === "rejected";
-    const ready = course.lessonCount >= MIN_LESSONS && course.rejected === 0 && course.sections.every((s) => s.lessons.length > 0);
+  const isLive = course.status === "live";
+  const canAdd = editable || isLive; // a live course can keep growing: new lessons wait for admin approval before students see them
+  const ready = course.lessonCount >= MIN_LESSONS && course.rejected === 0 && course.sections.every((s) => s.lessons.length > 0);
   const tick = (ok: boolean) => <span style={{ color: ok ? "oklch(0.5 0.15 150)" : T.muted }}>{ok ? "✓" : "○"}</span>;
 
   return (
@@ -144,7 +149,11 @@ export default function CourseEditor({ id }: { id: string }) {
         <div style={{ font: `800 36px ${DISPLAY}`, letterSpacing: "-.03em" }}>{course.title}</div>
         <StatusBadge status={course.status} />
       </div>
-      <div style={{ color: T.muted2, marginBottom: 18 }}>Step 2 of 2: add sections and lesson videos. Our team reviews every lesson before the course goes live.</div>
+      <div style={{ color: T.muted2, marginBottom: 18 }}>
+        {isLive
+          ? "This course is live. Add new sections and lesson videos any time. Students only see a new lesson after our team approves it."
+          : "Step 2 of 2: add sections and lesson videos. Our team reviews every lesson before the course goes live."}
+      </div>
 
       {course.reason && (course.status === "rejected" || course.status === "taken_down") && (
         <div style={{ ...box, background: "oklch(0.95 0.04 20)", color: "oklch(0.4 0.15 20)", fontWeight: 600 }}>Feedback from our team: {course.reason}</div>
@@ -153,17 +162,17 @@ export default function CourseEditor({ id }: { id: string }) {
 
       <div style={box}>
         <div style={{ font: `800 18px ${DISPLAY}`, marginBottom: 10 }}>Promo video</div>
-        {course.promoUrl ? <video src={course.promoUrl} controls preload="metadata" style={{ width: "100%", maxWidth: 560, borderRadius: 16, background: "#000" }} /> : <div style={{ color: T.muted }}>No promo video.</div>}
+        {course.promoUrl ? <VideoPlayer src={course.promoUrl} style={{ maxWidth: 560, borderRadius: 16 }} /> : <div style={{ color: T.muted }}>No promo video.</div>}
       </div>
 
-      <div style={box}>
+      {editable && <div style={box}>
         <div style={{ font: `800 18px ${DISPLAY}`, marginBottom: 8 }}>Before you can submit</div>
         <div style={{ lineHeight: 1.8, fontSize: 14 }}>
           <div>{tick(course.lessonCount >= MIN_LESSONS)} At least {MIN_LESSONS} lesson uploaded ({course.lessonCount} so far)</div>
           <div>{tick(course.rejected === 0)} No lessons waiting for a replacement video</div>
           <div>{tick(course.sections.length > 0 && course.sections.every((s) => s.lessons.length > 0))} Every section has at least one lesson</div>
         </div>
-      </div>
+      </div>}
 
       {course.sections.map((sec) => (
         <div key={sec.id} style={box}>
@@ -184,20 +193,20 @@ export default function CourseEditor({ id }: { id: string }) {
                   <span style={{ fontSize: 13, color: T.muted }}>{fmtDuration(l.duration)}</span>
                   <span style={{ fontSize: 12, fontWeight: 700, background: bg, color: fg, padding: "3px 10px", borderRadius: 99 }}>{label}</span>
                   <button style={{ ...small, color: T.purple }} onClick={() => setOpen(open === l.id ? null : l.id)}>{open === l.id ? "Hide" : "Watch"}</button>
-                  {editable && <button style={{ ...small, color: T.danger }} onClick={() => confirm("Delete this lesson?") && run(removeLesson({ token, lessonId: l.id as Id<"lessons"> }))}>Delete</button>}
+                  {(editable || (isLive && l.status !== "approved")) && <button style={{ ...small, color: T.danger }} onClick={() => confirm("Delete this lesson?") && run(removeLesson({ token, lessonId: l.id as Id<"lessons"> }))}>Delete</button>}
                 </div>
                 {l.status === "rejected" && l.reason && <div style={{ color: "oklch(0.45 0.15 20)", fontSize: 13, fontWeight: 600, marginTop: 6 }}>Reason: {l.reason}</div>}
-                {open === l.id && l.videoUrl && <video src={l.videoUrl} controls preload="metadata" style={{ width: "100%", maxWidth: 560, borderRadius: 14, marginTop: 10, background: "#000" }} />}
-                {editable && l.status === "rejected" && <ReplaceVideo lessonId={l.id} token={token} />}
+                {open === l.id && l.videoUrl && <VideoPlayer src={l.videoUrl} style={{ maxWidth: 560, marginTop: 10 }} />}
+                {canAdd && l.status === "rejected" && <ReplaceVideo lessonId={l.id} token={token} />}
               </div>
             );
           })}
           {sec.lessons.length === 0 && <div style={{ color: T.muted, fontSize: 14, padding: "10px 0" }}>No lessons yet.</div>}
-          {editable && <AddLesson sectionId={sec.id} token={token} disabled={false} />}
+          {canAdd && <AddLesson sectionId={sec.id} token={token} disabled={false} />}
         </div>
       ))}
 
-      {editable && (
+      {canAdd && (
         <div style={{ ...box, display: "flex", gap: 10, flexWrap: "wrap" }}>
           <input value={secTitle} onChange={(e) => setSecTitle(e.target.value)} placeholder="New section title, e.g. Getting started" style={{ ...input, flex: "1 1 260px" }} />
           <button
@@ -227,7 +236,7 @@ export default function CourseEditor({ id }: { id: string }) {
             <button style={{ ...small, color: T.muted }} onClick={() => run(draftM({ token, id: id as Id<"submissions"> }))}>Withdraw to edit</button>
           </>
         )}
-        {course.status === "live" && <span style={{ color: T.muted2 }}>This course is live.</span>}
+        {isLive && <span style={{ color: T.muted2 }}>{course.pending > 0 ? `${course.pending} new lesson${course.pending === 1 ? " is" : "s are"} waiting for approval.` : "This course is live."}</span>}
       </div>
     </div>
   );
