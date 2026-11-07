@@ -162,7 +162,7 @@ export default function CourseEditor({ id }: { id: string }) {
 
       <div style={box}>
         <div style={{ font: `800 18px ${DISPLAY}`, marginBottom: 10 }}>Promo video</div>
-        {course.promoUrl ? <VideoPlayer src={course.promoUrl} style={{ maxWidth: 560, borderRadius: 16 }} /> : <div style={{ color: T.muted }}>No promo video.</div>}
+        {course.hasPromo ? <VideoPlayer kind="promo" id={course.id} style={{ maxWidth: 560, borderRadius: 16 }} /> : <div style={{ color: T.muted }}>No promo video.</div>}
       </div>
 
       {editable && <div style={box}>
@@ -196,7 +196,7 @@ export default function CourseEditor({ id }: { id: string }) {
                   {(editable || (isLive && l.status !== "approved")) && <button style={{ ...small, color: T.danger }} onClick={() => confirm("Delete this lesson?") && run(removeLesson({ token, lessonId: l.id as Id<"lessons"> }))}>Delete</button>}
                 </div>
                 {l.status === "rejected" && l.reason && <div style={{ color: "oklch(0.45 0.15 20)", fontSize: 13, fontWeight: 600, marginTop: 6 }}>Reason: {l.reason}</div>}
-                {open === l.id && l.videoUrl && <VideoPlayer src={l.videoUrl} style={{ maxWidth: 560, marginTop: 10 }} />}
+                {open === l.id && l.hasVideo && <VideoPlayer kind="lesson" id={l.id} style={{ maxWidth: 560, marginTop: 10 }} />}
                 {canAdd && l.status === "rejected" && <ReplaceVideo lessonId={l.id} token={token} />}
               </div>
             );

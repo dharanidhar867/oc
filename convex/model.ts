@@ -28,11 +28,21 @@ const toHex = (buf: ArrayBuffer | Uint8Array) =>
     .join("");
 const fromHex = (h: string) => new Uint8Array(h.match(/.{2}/g)!.map((x) => parseInt(x, 16)));
 
-export async function hashPassword(password: string, saltHex?: string) {
+/**
+ * PBKDF2-HMAC-SHA256 work factor (OWASP's current figure for this algorithm). Argon2id/scrypt would be better,
+ * but the Convex runtime only has Web Crypto, where PBKDF2 is the one password KDF.
+ * Raising this later is safe: each hash stores the count it was made with, and logins upgrade old hashes.
+ */
+export const PBKDF2_ITERATIONS = 600_000;
+/** Hashes stored before the iteration count was recorded. */
+const LEGACY_ITERATIONS = 100_000;
+export const iterationsOf = (u: { iterations?: number }) => u.iterations ?? LEGACY_ITERATIONS;
+
+export async function hashPassword(password: string, saltHex?: string, iterations = PBKDF2_ITERATIONS) {
   const salt = saltHex ? fromHex(saltHex) : crypto.getRandomValues(new Uint8Array(16));
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 100_000, hash: "SHA-256" }, key, 256);
-  return { salt: toHex(salt), hash: toHex(bits) };
+  const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, key, 256);
+  return { salt: toHex(salt), hash: toHex(bits), iterations };
 }
 
 /** Constant-time string comparison. */
@@ -49,6 +59,10 @@ export async function sha256Hex(s: string) {
 
 export const newToken = () => toHex(crypto.getRandomValues(new Uint8Array(32)));
 
+/** Students may be signed in on this many devices at once. Logging in on another one signs out the oldest (limits account sharing). */
+export const MAX_STUDENT_SESSIONS = 3;
+const MAX_OTHER_SESSIONS = 10;
+
 export async function createSession(ctx: MutationCtx, userId: Doc<"users">["_id"], remember: boolean) {
   const token = newToken();
   const now = Date.now();
@@ -58,7 +72,40 @@ export async function createSession(ctx: MutationCtx, userId: Doc<"users">["_id"
     createdAt: now,
     expiresAt: now + (remember ? SESSION_MS_REMEMBER : SESSION_MS_SHORT),
   });
+  // Drop expired sessions and, beyond the device limit, the oldest ones.
+  const user = await ctx.db.get(userId);
+  const cap = user?.role === "student" ? MAX_STUDENT_SESSIONS : MAX_OTHER_SESSIONS;
+  const all = await ctx.db.query("sessions").withIndex("by_userId", (q) => q.eq("userId", userId)).take(200);
+  const live = all.filter((s) => s.expiresAt >= now).sort((a, b) => b.createdAt - a.createdAt);
+  for (const s of all) if (s.expiresAt < now) await ctx.db.delete(s._id);
+  for (const s of live.slice(cap)) await ctx.db.delete(s._id);
   return token;
+}
+
+/** How many times `key` has been hit in the current window (read-only). */
+export async function rateCount(ctx: QueryCtx, key: string, windowMs: number) {
+  const row = await ctx.db.query("rateBuckets").withIndex("by_key", (q) => q.eq("key", key)).unique();
+  return row && Date.now() - row.windowStart < windowMs ? row.count : 0;
+}
+
+/**
+ * Fixed-window rate limiter. Returns false (and records nothing) when `key` has already been used `limit` times
+ * in the current window. Callers should RETURN an error rather than throw, so a successful hit is committed.
+ */
+export async function rateLimit(ctx: MutationCtx, key: string, limit: number, windowMs: number) {
+  const now = Date.now();
+  const row = await ctx.db.query("rateBuckets").withIndex("by_key", (q) => q.eq("key", key)).unique();
+  if (!row) {
+    await ctx.db.insert("rateBuckets", { key, windowStart: now, count: 1 });
+    return true;
+  }
+  if (now - row.windowStart >= windowMs) {
+    await ctx.db.patch(row._id, { windowStart: now, count: 1 });
+    return true;
+  }
+  if (row.count >= limit) return false;
+  await ctx.db.patch(row._id, { count: row.count + 1 });
+  return true;
 }
 
 /** Resolves a session token to its user, or null if missing/expired/unknown. */

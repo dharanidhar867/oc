@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useMutation, useQuery } from "convex/react";
@@ -12,6 +12,28 @@ import { DISPLAY, T } from "@/lib/theme";
 import { errorMessage } from "@/lib/upload";
 import { useAuth } from "../auth";
 import VideoPlayer from "../VideoPlayer";
+import { flyToCart, ticket } from "../sticker-fx";
+
+/** The price as a swinging tag hanging from a string, with a money-back stamp beside it. */
+function PriceTag({ price, guarantee = true }: { price: number; guarantee?: boolean }) {
+  return (
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between" }}>
+      <div className="price-hang" style={{ flex: 1 }}>
+        <span className="string" />
+        <div className="price-tag">{price === 0 ? "Free" : money(price)}</div>
+      </div>
+      {guarantee && price > 0 && (
+        <div className="guarantee" style={{ marginTop: 10 }}>
+          30-day
+          <br />
+          money
+          <br />
+          back
+        </div>
+      )}
+    </div>
+  );
+}
 
 const card: React.CSSProperties = { background: "#fff", borderRadius: 28, padding: 26 };
 const h2: React.CSSProperties = { font: `800 24px ${DISPLAY}`, letterSpacing: "-.02em", marginBottom: 14 };
@@ -31,6 +53,7 @@ export default function LiveCourseView({ id }: { id: string }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const [openSec, setOpenSec] = useState<Set<string>>(new Set());
+  const addBtn = useRef<HTMLButtonElement>(null);
 
   if (c === undefined) return <div style={{ minHeight: "60vh" }} />;
   if (c === null)
@@ -54,6 +77,10 @@ export default function LiveCourseView({ id }: { id: string }) {
     try {
       await addM({ token, courseId: c.id as Id<"submissions"> });
       if (thenCart) goCart();
+      else {
+        flyToCart(addBtn.current, c.thumbnail);
+        ticket("Added to cart", c.title);
+      }
     } catch (e) {
       setErr(errorMessage(e, "Couldn’t add this course. Please try again."));
     }
@@ -86,7 +113,7 @@ export default function LiveCourseView({ id }: { id: string }) {
     </>
   ) : !canBuy ? (
     <>
-      <div style={{ font: `800 38px ${DISPLAY}`, margin: "16px 0 14px" }}>{c.price === 0 ? "Free" : money(c.price)}</div>
+      <PriceTag price={c.price} guarantee={false} />
       <div style={{ background: T.bg, borderRadius: 16, padding: 14, fontSize: 14, lineHeight: 1.5, color: T.body }}>
         {user?.role === "instructor"
           ? "Instructor accounts are for teaching, so courses can’t be bought here. To learn, sign up with a separate student account."
@@ -95,8 +122,9 @@ export default function LiveCourseView({ id }: { id: string }) {
     </>
   ) : (
     <>
-      <div style={{ font: `800 38px ${DISPLAY}`, margin: "16px 0 14px" }}>{c.price === 0 ? "Free" : money(c.price)}</div>
+      <PriceTag price={c.price} />
       <button
+        ref={addBtn}
         onClick={inCart ? goCart : () => add(false)}
         disabled={busy}
         className="btn-hover"
@@ -108,7 +136,7 @@ export default function LiveCourseView({ id }: { id: string }) {
         onClick={() => (inCart ? goCart() : add(true))}
         disabled={busy}
         className="btn-hover"
-        style={{ width: "100%", marginTop: 10, border: `2px solid ${T.ink}`, background: "#fff", color: T.ink, borderRadius: 99, padding: 14, fontWeight: 800, fontSize: 16, fontFamily: "inherit", cursor: "pointer" }}
+        style={{ width: "100%", marginTop: 12, border: `2px solid ${T.ink}`, background: "#fff", color: T.ink, borderRadius: 99, padding: 14, fontWeight: 800, fontSize: 16, fontFamily: "inherit", cursor: "pointer" }}
       >
         Buy now
       </button>
@@ -147,10 +175,15 @@ export default function LiveCourseView({ id }: { id: string }) {
           <div style={card}>
             <div style={h2}>What you’ll get</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(210px,1fr))", gap: 12 }}>
-              {facts.map(([icon, text]) => (
-                <div key={text} style={{ display: "flex", gap: 12, alignItems: "center", background: T.bg, borderRadius: 18, padding: "14px 16px", fontWeight: 700, fontSize: 15 }}>
+              {facts.map(([icon, text], i) => (
+                // Each fact ticks itself off in turn
+                <div key={text} className="tick-in" style={{ display: "flex", gap: 12, alignItems: "center", background: T.bg, borderRadius: 18, padding: "14px 16px", fontWeight: 700, fontSize: 15, animationDelay: `${200 + i * 110}ms` }}>
                   <span style={{ fontSize: 22 }}>{icon}</span>
-                  {text}
+                  <span style={{ flex: 1 }}>{text}</span>
+                  <svg width="24" height="24" viewBox="0 0 26 26" aria-hidden focusable={false} style={{ flex: "none" }}>
+                    <circle cx="13" cy="13" r="12" fill={T.yellow} />
+                    <path d="M8 13.5l3.5 3.5 6.5-7" stroke={T.ink} strokeWidth="2.6" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ animationDelay: `${450 + i * 110}ms` }} />
+                  </svg>
                 </div>
               ))}
             </div>
@@ -253,8 +286,8 @@ export default function LiveCourseView({ id }: { id: string }) {
 
         {/* Buy card */}
         <div className="course-buy" style={{ background: "#fff", borderRadius: 28, padding: 20, boxShadow: "0 10px 40px oklch(0.3 0.1 300 / .12)" }}>
-          {c.promoUrl ? (
-            <VideoPlayer src={c.promoUrl} style={{ borderRadius: 18 }} />
+          {c.hasPromo ? (
+            <VideoPlayer kind="promo" id={c.id} style={{ borderRadius: 18 }} />
           ) : (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={c.thumbnail} alt="" style={{ width: "100%", aspectRatio: "16 / 9", objectFit: "cover", borderRadius: 18, display: "block" }} />

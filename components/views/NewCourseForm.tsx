@@ -63,7 +63,7 @@ export default function NewCourseForm() {
     if (title.trim().length < 8) errs.title = "Give your course a clear title (at least 8 characters).";
     if (subtitle.trim().length < 10) errs.subtitle = "Add a one-line subtitle.";
     const p = Number(price);
-    if (!Number.isFinite(p) || p < 0 || p > 99999) errs.price = "Enter a price between 0 and 99,999.";
+    if (!Number.isFinite(p) || p < 49 || p > 99999) errs.price = "Enter a price between ₹49 and ₹99,999."; // mirrors MIN_PRICE_INR in convex/limits.ts
     if (description.trim().length < 60) errs.description = `Describe what learners will get (at least 60 characters — ${description.trim().length} so far).`;
     if (!thumb) errs.thumb = errs.thumb || "Upload a course image.";
     if (!promo) errs.promo = errs.promo || `Upload a promo video (up to ${MAX_PROMO_MIN} minutes).`;

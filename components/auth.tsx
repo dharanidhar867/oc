@@ -3,9 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import type { AuthResult, Role, Session, SignupRole } from "@/lib/auth";
+import type { AuthFail, AuthResult, Role, Session, SignupRole } from "@/lib/auth";
 import { DISPLAY, T } from "@/lib/theme";
 
 // The browser only holds an opaque session token. Who you are, what role you have and whether
@@ -40,20 +40,24 @@ type Auth = {
   user: Session | null;
   token: string | null; // pass to Convex functions that need the caller's identity
   ready: boolean; // false until the session has been resolved (avoids a logged-out flash)
-  logIn: (i: { email: string; password: string; role: Role; remember?: boolean }) => Promise<AuthResult>;
-  signUp: (i: SignUpInput) => Promise<AuthResult>;
+  logIn: (i: { email: string; password: string; role: Role; remember?: boolean; captchaToken?: string }) => Promise<AuthResult>;
+  /** Step 1: emails a code (or, for an existing account, a notice). The answer never says which. */
+  startSignUp: (i: SignUpInput & { captchaToken: string }) => Promise<{ ok: true } | AuthFail>;
+  /** Step 2: the emailed code creates the account and signs in. */
+  completeSignUp: (i: { email: string; code: string; remember?: boolean }) => Promise<AuthResult>;
   logOut: () => void;
 };
 
 const Ctx = createContext<Auth | null>(null);
 
-type ServerResult = { ok: true; token: string; session: Session } | { ok: false; error: string; field?: "email" | "password" | "name" };
+type ServerResult = { ok: true; token: string; session: Session } | AuthFail;
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const logInM = useMutation(api.auth.logIn);
-  const signUpM = useMutation(api.auth.signUp);
+  const logInA = useAction(api.auth.logIn);
+  const startSignUpA = useAction(api.auth.startSignUp);
+  const completeSignUpM = useMutation(api.auth.completeSignUp);
   const logOutM = useMutation(api.auth.logOut);
 
   useEffect(() => {
@@ -84,8 +88,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user: token ? (me ?? null) : null,
     token,
     ready: loaded && (!token || me !== undefined),
-    logIn: async (i) => finish((await logInM({ identifier: i.email, password: i.password, role: i.role, remember: i.remember })) as ServerResult, i.remember ?? false),
-    signUp: async (i) => finish((await signUpM(i)) as ServerResult, i.remember ?? true),
+    logIn: async (i) =>
+      finish((await logInA({ identifier: i.email, password: i.password, role: i.role, remember: i.remember, captchaToken: i.captchaToken })) as ServerResult, i.remember ?? false),
+    startSignUp: async (i) =>
+      (await startSignUpA({ name: i.name, email: i.email, password: i.password, role: i.role, application: i.application, captchaToken: i.captchaToken })) as { ok: true } | AuthFail,
+    completeSignUp: async (i) => finish((await completeSignUpM(i)) as ServerResult, i.remember ?? true),
     logOut: () => {
       if (token) logOutM({ token }).catch(() => {});
       storeToken(null);

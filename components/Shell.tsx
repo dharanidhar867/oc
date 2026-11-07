@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CATS } from "@/lib/data";
@@ -9,6 +9,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useStore } from "./store";
 import { useAuth } from "./auth";
+import { TicketToast } from "./sticker-fx";
 
 function NavBar({ activeCat }: { activeCat: string | null }) {
   const router = useRouter();
@@ -23,16 +24,16 @@ function NavBar({ activeCat }: { activeCat: string | null }) {
       <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "14px 40px", maxWidth: 1360, margin: "0 auto" }}>
         <Link
           href="/"
-          className="nl"
+          className="nl logo"
           onClick={() => set({ q: "" })}
           style={{ font: `800 28px ${DISPLAY}`, color: T.purple, cursor: "pointer" }}
         >
-          quickai<span style={{ color: T.orange }}>•</span>
+          quickai<span className="logo-dot" style={{ color: T.orange }}>•</span>
         </Link>
         <Link href="/courses" className="nl" style={{ background: "#fff", borderRadius: 99, padding: "10px 20px", fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
           Explore ▾
         </Link>
-        <div style={{ flex: 1, background: "#fff", borderRadius: 99, padding: "4px 6px 4px 22px", display: "flex", alignItems: "center" }}>
+        <div className="nav-search" style={{ flex: 1, background: "#fff", borderRadius: 99, padding: "4px 6px 4px 22px", display: "flex", alignItems: "center" }}>
           <input
             value={q}
             onChange={(e) => set({ q: e.target.value })}
@@ -42,56 +43,76 @@ function NavBar({ activeCat }: { activeCat: string | null }) {
             placeholder="Search for courses, skills, instructors"
             style={{ flex: 1, border: 0, outline: 0, background: "transparent", fontSize: 15, color: T.ink, padding: "8px 0" }}
           />
-          <Link href="/courses" className="nl" style={{ background: T.orange, fontWeight: 700, padding: "9px 20px", borderRadius: 99, cursor: "pointer", fontSize: 14 }}>
+          <Link href="/courses" className="nl btn-hover" style={{ background: T.orange, fontWeight: 700, padding: "5px 18px", borderRadius: 99, cursor: "pointer", fontSize: 14 }}>
             Search
           </Link>
         </div>
         {/* Students only see learning links; the teaching link is for guests and instructors. Admins use their console. */}
         {ready && (!user || user.role === "instructor") && (
-          <Link href="/instructor" className="nl" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+          <Link href="/instructor" className="nl navlink" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
             {user ? "Instructor studio" : "Teach on QuickAI"}
           </Link>
         )}
         {ready && user?.role === "admin" && (
-          <Link href="/admin" className="nl" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+          <Link href="/admin" className="nl navlink" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
             Admin console
           </Link>
         )}
         {user?.role !== "admin" && (
           <>
-            <Link href="/my-courses" className="nl" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+            <Link href="/my-courses" className="nl navlink" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
               My learning
             </Link>
             {user?.role !== "instructor" && (
-              <Link href="/cart" className="nl" style={{ background: "#fff", borderRadius: 99, padding: "10px 18px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
-                Cart · {cartCount}
+              // Re-keyed on every count change, so the pill wobbles and the number rolls in.
+              <Link key={cartCount} id="nav-cart" href="/cart" className="nl cart-bump" style={{ display: "inline-block", background: "#fff", borderRadius: 99, padding: "10px 18px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+                Cart · <span className="roll-num">{cartCount}</span>
               </Link>
             )}
           </>
         )}
         <AuthButtons />
       </div>
-      <div style={{ display: "flex", gap: 6, padding: "0 40px 12px", maxWidth: 1360, margin: "0 auto", overflow: "hidden" }}>
-        {CATS.map((c) => (
-          <Link
-            key={c.name}
-            href={`/courses?category=${encodeURIComponent(c.name)}`}
-            className="nl nav-chip"
-            onClick={() => set({ q: "" })}
-            style={{
-              fontSize: 14,
-              fontWeight: 600,
-              padding: "6px 14px",
-              borderRadius: 99,
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              background: activeCat === c.name && onCatalog ? "#fff" : "transparent",
-            }}
-          >
-            {c.name}
-          </Link>
-        ))}
-      </div>
+      <CategoryChips active={onCatalog ? activeCat : null} onPick={() => set({ q: "" })} />
+    </div>
+  );
+}
+
+/** Category chips with a white "magic pill" that slides to the chip you hover, then back to the active one. */
+function CategoryChips({ active, onPick }: { active: string | null; onPick: () => void }) {
+  const row = useRef<HTMLDivElement>(null);
+  const pill = useRef<HTMLSpanElement>(null);
+  const moveTo = (name: string | null) => {
+    const p = pill.current;
+    if (!p) return;
+    const el = name ? row.current?.querySelector<HTMLElement>(`[data-cat="${CSS.escape(name)}"]`) : null;
+    if (!el) {
+      p.style.opacity = "0";
+      return;
+    }
+    p.style.opacity = "1";
+    p.style.left = `${el.offsetLeft}px`;
+    p.style.width = `${el.offsetWidth}px`;
+  };
+  useEffect(() => moveTo(active), [active]);
+
+  return (
+    <div ref={row} onMouseLeave={() => moveTo(active)} style={{ position: "relative", display: "flex", gap: 6, padding: "0 40px 12px", maxWidth: 1360, margin: "0 auto", overflow: "hidden" }}>
+      <span ref={pill} className="magic-pill" style={{ opacity: 0 }} />
+      {CATS.map((c) => (
+        <Link
+          key={c.name}
+          data-cat={c.name}
+          href={`/courses?category=${encodeURIComponent(c.name)}`}
+          className="nl nav-chip"
+          onMouseEnter={() => moveTo(c.name)}
+          onFocus={() => moveTo(c.name)}
+          onClick={onPick}
+          style={{ fontSize: 14, fontWeight: 600, padding: "6px 14px", borderRadius: 99, cursor: "pointer", whiteSpace: "nowrap" }}
+        >
+          {c.name}
+        </Link>
+      ))}
     </div>
   );
 }
@@ -145,6 +166,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       </Suspense>
       {children}
       {!isLearn && <Footer />}
+      <TicketToast />
     </div>
   );
 }

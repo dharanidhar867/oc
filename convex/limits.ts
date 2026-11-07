@@ -9,3 +9,7 @@ export const PROMO_UPLOADS_PER_DAY = 5;
 export const MIN_COURSE_SECONDS = 0; // no minimum total length: a course can be submitted once it has a lesson
 export const MIN_LESSONS = 1;
 export const DAY_MS = 24 * 60 * 60 * 1000;
+// Dodo Payments won't process less than about US$0.50 (₹49): below that it silently charges ₹49 instead,
+// which can never match our order. So no course, and no order, may cost less than this.
+export const MIN_PRICE_INR = 49;
+export const MAX_PRICE_INR = 99_999;

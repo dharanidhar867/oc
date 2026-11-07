@@ -13,6 +13,9 @@ import { HeroArt, TopicGlyph } from "../Art";
 import TrustedBy from "../TrustedBy";
 import { RECOMMENDED, REVIEWS, STATS } from "@/lib/home-content";
 
+// Small, fixed tilts so tiles look hand-placed (deterministic, so server and client render the same).
+const TILT = [-1.4, 1.1, -0.7, 1.6, 0.9, -1.2, 1.4, -0.9];
+
 const POPULAR = ["Python", "Figma", "Excel", "Spanish", "Guitar", "Yoga", "Prompt engineering"];
 
 export default function HomeView() {
@@ -35,46 +38,53 @@ export default function HomeView() {
           <div>
             <div style={{ font: `800 76px/1 ${DISPLAY}`, letterSpacing: "-.035em" }}>
               Learn{" "}
-              <span style={{ background: "oklch(0.88 0.12 90)", padding: "0 12px", borderRadius: 22, display: "inline-block", transform: "rotate(-2deg)" }}>
+              <span className="stk" style={{ background: "oklch(0.88 0.12 90)", padding: "0 12px", borderRadius: 22 }}>
                 anything.
               </span>{" "}
-              Start in minutes.
+              Start in{" "}
+              <span className="squiggle">
+                minutes
+                <svg viewBox="0 0 200 22" preserveAspectRatio="none" aria-hidden focusable={false}>
+                  <path d="M4 14 C 40 4, 70 20, 100 11 S 160 4, 196 12" />
+                </svg>
+              </span>
+              .
             </div>
             <div style={{ fontSize: 19, lineHeight: 1.5, margin: "20px 0 26px", color: T.muted2, maxWidth: 500 }}>
               Courses in code, design, business, music, languages and more. Learn at your pace.
             </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              <Link href="/courses" className="nl btn-hover" style={{ background: T.orange, fontWeight: 700, padding: "16px 30px", borderRadius: 99, cursor: "pointer" }}>
-                Browse all courses
+            <div style={{ display: "flex", gap: 14 }}>
+              <Link href="/courses" className="nl btn-hover" style={{ background: T.orange, fontWeight: 700, padding: "14px 28px", borderRadius: 99, cursor: "pointer" }}>
+                Browse all courses <span className="arr">→</span>
               </Link>
               {!isStudent && (
-                <Link href="/instructor" className="nl btn-hover" style={{ background: "#fff", fontWeight: 700, padding: "16px 30px", borderRadius: 99, cursor: "pointer" }}>
+                <Link href="/instructor" className="nl btn-hover" style={{ background: "#fff", fontWeight: 700, padding: "14px 28px", borderRadius: 99, cursor: "pointer" }}>
                   Become an instructor
                 </Link>
               )}
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 22, fontSize: 14 }}>
               <span style={{ color: T.muted2, fontWeight: 600 }}>Popular:</span>
-              {POPULAR.map((p) => (
+              {POPULAR.map((p, i) => (
                 <span
                   key={p}
                   className="chip-hover"
                   onClick={() => search(p)}
-                  style={{ background: "#fff", borderRadius: 99, padding: "6px 14px", fontWeight: 600, cursor: "pointer" }}
+                  style={{ background: "#fff", borderRadius: 99, padding: "6px 14px", fontWeight: 600, cursor: "pointer", ["--r" as string]: `${TILT[i % TILT.length] * 3}deg` }}
                 >
                   {p}
                 </span>
               ))}
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "170px 170px", gap: 14 }}>
-            <div className="float-tile" style={{ gridRow: "span 2", borderRadius: 32, overflow: "hidden" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "170px 170px", gap: 16 }}>
+            <div className="float-tile" style={{ gridRow: "span 2", borderRadius: 32, overflow: "hidden", ["--r" as string]: "-2deg" }}>
               <HeroArt kind="learner" />
             </div>
-            <div className="float-tile" style={{ borderRadius: 32, overflow: "hidden" }}>
+            <div className="float-tile" style={{ borderRadius: 32, overflow: "hidden", ["--r" as string]: "2.5deg" }}>
               <HeroArt kind="idea" />
             </div>
-            <div className="float-tile" style={{ borderRadius: 32, overflow: "hidden" }}>
+            <div className="float-tile" style={{ borderRadius: 32, overflow: "hidden", ["--r" as string]: "-1.5deg" }}>
               <HeroArt kind="books" />
             </div>
           </div>
@@ -93,8 +103,8 @@ export default function HomeView() {
         <div style={{ marginTop: 34 }}>
           <div style={{ font: `800 20px ${DISPLAY}`, marginBottom: 12 }}>🔥 Trending topics</div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
-            {RECOMMENDED.slice(0, 4).map((r) => (
-              <div key={r.t} onClick={() => search(r.q)} className="card-hover" style={{ display: "flex", gap: 12, alignItems: "center", background: "#fff", borderRadius: 22, padding: 10, cursor: "pointer" }}>
+            {RECOMMENDED.slice(0, 4).map((r, i) => (
+              <div key={r.t} onClick={() => search(r.q)} className="card-hover" style={{ display: "flex", gap: 12, alignItems: "center", background: "#fff", borderRadius: 22, padding: 10, cursor: "pointer", ["--r" as string]: `${TILT[i]}deg` }}>
                 <div style={{ width: 58, height: 58, borderRadius: 14, background: pastel(r.hue, 0.88, 0.09), flex: "none", display: "grid", placeItems: "center" }}>
                   <TopicGlyph kind={r.art} hue={r.hue} size={32} />
                 </div>
@@ -126,24 +136,29 @@ export default function HomeView() {
                   <div style={{ fontSize: 12, opacity: 0.8 }}>categories</div>
                 </div>
               </div>
-              <Link href="/courses" className="nl btn-hover" style={{ display: "inline-block", background: T.orange, color: T.ink, fontWeight: 700, padding: "13px 24px", borderRadius: 99 }}>
-                Browse all courses →
+              <Link href="/courses" className="nl btn-hover" style={{ display: "inline-block", background: T.orange, color: T.ink, fontWeight: 700, padding: "12px 22px", borderRadius: 99 }}>
+                Browse all courses <span className="arr">→</span>
               </Link>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gridTemplateRows: "repeat(3,1fr)", gap: 14 }}>
-              {CATS.slice(0, 12).map((g) => (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gridTemplateRows: "repeat(3,1fr)", gap: 16 }}>
+              {CATS.slice(0, 12).map((g, i) => (
                 <Link
                   key={g.name}
                   href={`/courses?category=${encodeURIComponent(g.name)}`}
                   className="nl tile-hover"
                   onClick={() => set({ q: "" })}
-                  style={{ cursor: "pointer", background: pastel(g.hue), borderRadius: 24, padding: 20, display: "flex", flexDirection: "column", justifyContent: "space-between" }}
+                  style={{ cursor: "pointer", background: pastel(g.hue), borderRadius: 24, padding: 18, display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 8, ["--r" as string]: `${TILT[i % TILT.length]}deg` }}
                 >
                   <div style={{ fontWeight: 800, fontSize: 19, lineHeight: 1.15 }}>{g.name}</div>
-                  <div style={{ fontSize: 13, opacity: 0.75, marginTop: 6, display: "flex", justifyContent: "space-between" }}>
-                    <span>{fmt(countOf(g.name))} {countOf(g.name) === 1 ? "course" : "courses"}</span>
-                    <span className="tile-arrow" style={{ fontWeight: 800 }}>→</span>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+                    <span className="tile-arrow" style={{ fontWeight: 800, fontSize: 18 }}>→</span>
+                    {/* Course count as a rubber stamp */}
+                    <span className="stamp">
+                      {fmt(countOf(g.name))}
+                      <br />
+                      {countOf(g.name) === 1 ? "course" : "courses"}
+                    </span>
                   </div>
                 </Link>
               ))}
@@ -158,9 +173,9 @@ export default function HomeView() {
       <section style={{ paddingTop: 56 }}>
         <div style={{ font: `800 36px ${DISPLAY}`, letterSpacing: "-.02em" }}>Most recommended for you</div>
         <div style={{ color: T.muted2, fontSize: 17, margin: "8px 0 24px" }}>AI and the other topics learners are choosing right now.</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 18 }}>
-          {RECOMMENDED.map((r) => (
-            <div key={r.t} onClick={() => search(r.q)} className="card-hover" style={{ background: "#fff", borderRadius: 28, padding: 14, cursor: "pointer", display: "flex", flexDirection: "column" }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: "34px 22px", paddingTop: 12 }}>
+          {RECOMMENDED.map((r, i) => (
+            <div key={r.t} onClick={() => search(r.q)} className="card-hover taped" style={{ background: "#fff", borderRadius: 28, padding: 14, cursor: "pointer", display: "flex", flexDirection: "column", ["--r" as string]: `${TILT[(i + 3) % TILT.length]}deg` }}>
               <div style={{ height: 120, borderRadius: 20, background: pastel(r.hue, 0.88, 0.09), position: "relative", overflow: "hidden", display: "flex", alignItems: "flex-start", padding: 12 }}>
                 <span aria-hidden style={{ position: "absolute", right: -22, bottom: -34, width: 110, height: 110, borderRadius: "50%", background: pastel(r.hue, 0.93, 0.07) }} />
                 <span aria-hidden style={{ position: "absolute", left: "38%", top: -26, width: 56, height: 56, borderRadius: "50%", background: pastel(r.hue, 0.92, 0.06) }} />
@@ -179,18 +194,18 @@ export default function HomeView() {
 
       {/* Promos */}
       <div style={{ display: "grid", gridTemplateColumns: isStudent ? "1fr 1fr" : "1fr 1fr 1fr", gap: 20, marginTop: 56 }}>
-        <div style={{ background: "oklch(0.9 0.08 300)", borderRadius: 30, padding: 30 }}>
+        <div className="tile-hover" style={{ background: "oklch(0.9 0.08 300)", borderRadius: 30, padding: 30, ["--r" as string]: "-1deg" }}>
           <div style={{ font: `800 26px/1.1 ${DISPLAY}` }}>Skill paths</div>
           <div style={{ margin: "10px 0 16px", color: "#4b4466" }}>Curated sequences that take you from first lesson to job-ready.</div>
           <b>Explore paths →</b>
         </div>
-        <div style={{ background: "oklch(0.9 0.08 150)", borderRadius: 30, padding: 30 }}>
+        <div className="tile-hover" style={{ background: "oklch(0.9 0.08 150)", borderRadius: 30, padding: 30, ["--r" as string]: "0.8deg" }}>
           <div style={{ font: `800 26px/1.1 ${DISPLAY}` }}>QuickAI for Business</div>
           <div style={{ margin: "10px 0 16px", color: "#3f5a47" }}>Upskill your whole team with analytics, assignments and SSO.</div>
           <b>Request a demo →</b>
         </div>
         {!isStudent && (
-          <div style={{ background: "oklch(0.9 0.1 90)", borderRadius: 30, padding: 30 }}>
+          <div className="tile-hover" style={{ background: "oklch(0.9 0.1 90)", borderRadius: 30, padding: 30, ["--r" as string]: "-0.6deg" }}>
             <div style={{ font: `800 26px/1.1 ${DISPLAY}` }}>Teach what you know</div>
             <div style={{ margin: "10px 0 16px", color: "#5f5320" }}>Reach millions of learners and keep up to 70% of every sale.</div>
             <Link href="/instructor" className="nl" style={{ fontWeight: "bold", cursor: "pointer" }}>
@@ -203,8 +218,8 @@ export default function HomeView() {
       {/* Testimonials */}
       <div style={{ font: `800 32px ${DISPLAY}`, margin: "56px 0 18px", letterSpacing: "-.02em" }}>Learners love it</div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 20 }}>
-        {REVIEWS.map((r) => (
-          <div key={r.n} style={{ background: "#fff", borderRadius: 28, padding: 24 }}>
+        {REVIEWS.map((r, i) => (
+          <div key={r.n} className="card-hover taped" style={{ background: "#fff", borderRadius: 28, padding: 24, ["--r" as string]: `${TILT[(i + 1) % TILT.length]}deg` }}>
             <div style={{ color: T.star }}>★★★★★</div>
             <div style={{ fontSize: 16, lineHeight: 1.5, margin: "10px 0 16px" }}>“{r.x}”</div>
             <div style={{ fontWeight: 700, fontSize: 14 }}>

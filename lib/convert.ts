@@ -11,7 +11,8 @@ type FFmpegInstance = {
   terminate: () => void;
 };
 // Loaded at runtime straight from /public (not bundled) so the library can start its own module worker.
-const importRuntime = new Function("u", "return import(u)") as (u: string) => Promise<{ FFmpeg: new () => FFmpegInstance }>;
+// A real dynamic import (not `new Function`), so the strict Content-Security-Policy doesn't need 'unsafe-eval'.
+const importRuntime = (u: string) => import(/* webpackIgnore: true */ u) as Promise<{ FFmpeg: new () => FFmpegInstance }>;
 
 export type ConvertPhase = { phase: "loading" } | { phase: "converting"; pct: number };
 

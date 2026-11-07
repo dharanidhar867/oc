@@ -7,6 +7,7 @@ import { isEmail, passwordProblem, passwordStrength, safeNext, type SignupRole }
 import { T } from "@/lib/theme";
 import { useAuth } from "../auth";
 import { AuthLayout, Checkbox, Field, FormError, SubmitButton, Textarea } from "../auth-ui";
+import Turnstile from "../Turnstile";
 
 const STRENGTH = ["Too weak", "Weak", "Okay", "Good", "Strong"];
 const STRENGTH_COLOR = ["oklch(0.7 0.15 25)", "oklch(0.7 0.15 25)", "oklch(0.8 0.15 80)", "oklch(0.75 0.15 140)", "oklch(0.65 0.17 150)"];
@@ -15,7 +16,7 @@ export default function SignupForm() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next");
-  const { signUp } = useAuth();
+  const { startSignUp, completeSignUp } = useAuth();
 
   const [role, setRole] = useState<SignupRole>(params.get("role") === "instructor" ? "instructor" : "student");
   const [name, setName] = useState("");
@@ -31,9 +32,67 @@ export default function SignupForm() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
+  const [step, setStep] = useState<"details" | "code">("details");
+  const [code, setCode] = useState("");
+  const [notice, setNotice] = useState("");
 
   const strength = password ? passwordStrength(password) : -1;
   const isTeacher = role === "instructor";
+  const resetCaptcha = () => {
+    setCaptcha(null);
+    setCaptchaKey((k) => k + 1); // tokens are single-use
+  };
+
+  /** Sends (or re-sends) the code. The server answers the same way whether or not the email is registered. */
+  const sendCode = async () => {
+    if (!captcha) {
+      setFormError("Please complete the “I’m human” check first.");
+      return false;
+    }
+    setLoading(true);
+    try {
+      const r = await startSignUp({
+        name,
+        email,
+        password,
+        role,
+        captchaToken: captcha,
+        application: isTeacher ? { headline: headline.trim(), teaches: teaches.trim(), bio: bio.trim(), link: link.trim() || undefined } : undefined,
+      });
+      resetCaptcha();
+      if (!r.ok) {
+        if (r.field) setErrors({ [r.field]: r.error });
+        else setFormError(r.error);
+        return false;
+      }
+      return true;
+    } catch {
+      resetCaptcha();
+      setFormError("Something went wrong. Please try again.");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const verify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setFormError("");
+    if (!/^\d{6}$/.test(code.replace(/\s/g, ""))) return setFormError("Enter the 6-digit code from the email.");
+    setLoading(true);
+    try {
+      const r = await completeSignUp({ email, code, remember: true });
+      if (!r.ok) return setFormError(r.error);
+      // New instructors land on the "under review" screen until an admin approves them.
+      router.replace(safeNext(next, isTeacher ? "/instructor" : "/"));
+    } catch {
+      setFormError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,25 +114,49 @@ export default function SignupForm() {
     setErrors(errs);
     setFormError("");
     if (Object.keys(errs).length) return;
-
-    setLoading(true);
-    const r = await signUp({
-      name,
-      email,
-      password,
-      role,
-      remember: true,
-      application: isTeacher ? { headline: headline.trim(), teaches: teaches.trim(), bio: bio.trim(), link: link.trim() || undefined } : undefined,
-    });
-    setLoading(false);
-    if (!r.ok) {
-      if (r.field) setErrors({ [r.field]: r.error });
-      else setFormError(r.error);
-      return;
+    if (await sendCode()) {
+      setNotice("");
+      setStep("code");
     }
-    // New instructors land on the "under review" screen until an admin approves them.
-    router.replace(safeNext(next, isTeacher ? "/instructor" : "/"));
   };
+
+  if (step === "code") {
+    return (
+      <AuthLayout variant={isTeacher ? "apply" : "signup"} title="Check your email" subtitle={`We sent a message to ${email.trim()}. Enter the 6-digit code from it to finish.`}>
+        <form onSubmit={verify} noValidate>
+          <FormError>{formError}</FormError>
+          {notice && <div style={{ background: "oklch(0.95 0.05 150)", borderRadius: 14, padding: "10px 14px", fontSize: 14, marginBottom: 12 }}>{notice}</div>}
+          <Field label="6-digit code" value={code} onChange={(v) => setCode(v.replace(/[^\d\s]/g, "").slice(0, 7))} placeholder="123456" autoComplete="one-time-code" />
+          <div style={{ fontSize: 13, color: T.muted, margin: "-4px 0 14px", lineHeight: 1.5 }}>
+            The code expires in 15 minutes. Already have an account with this email? The message will tell you, and you can just log in.
+          </div>
+          <SubmitButton loading={loading} color={isTeacher ? T.orange : T.purple}>
+            {isTeacher ? "Verify and submit application" : "Verify and create account"}
+          </SubmitButton>
+        </form>
+        <div style={{ marginTop: 18, borderTop: `1px solid ${T.line}`, paddingTop: 14 }}>
+          <div style={{ fontSize: 13, color: T.muted, marginBottom: 6 }}>Didn’t get it? Check spam, or send a new code:</div>
+          <Turnstile key={captchaKey} onToken={setCaptcha} />
+          <div style={{ display: "flex", gap: 16, fontSize: 14, fontWeight: 700 }}>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={async () => {
+                setFormError("");
+                if (await sendCode()) setNotice("A new code is on its way.");
+              }}
+              style={{ background: "none", border: 0, padding: 0, color: T.purple, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Send a new code
+            </button>
+            <button type="button" onClick={() => { setStep("details"); setCode(""); setFormError(""); }} style={{ background: "none", border: 0, padding: 0, color: T.muted2, fontWeight: 700, cursor: "pointer", fontFamily: "inherit" }}>
+              Change details
+            </button>
+          </div>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   const roleCard = (r: SignupRole, icon: string, title: string, sub: string) => {
     const on = role === r;
@@ -156,8 +239,9 @@ export default function SignupForm() {
         <Checkbox checked={agree} onChange={setAgree} error={errors.agree}>
           I agree to the QuickAI <b>Terms of Use</b> and <b>Privacy Policy</b>.
         </Checkbox>
+        <Turnstile key={captchaKey} onToken={setCaptcha} />
         <SubmitButton loading={loading} color={isTeacher ? T.orange : T.purple}>
-          {isTeacher ? "Submit application" : "Create account"}
+          Continue
         </SubmitButton>
       </form>
     </AuthLayout>

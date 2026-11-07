@@ -18,11 +18,13 @@ export const upsertUser = internalMutation({
       const taken = await ctx.db.query("users").withIndex("by_username", (q) => q.eq("username", username)).unique();
       if (taken && taken.email !== email) throw new Error("Username already used by another account");
     }
-    const { salt, hash } = await hashPassword(a.password);
+    const { salt, hash, iterations } = await hashPassword(a.password);
     const existing = await ctx.db.query("users").withIndex("by_email", (q) => q.eq("email", email)).unique();
-    const fields = { name: a.name.trim(), username, email, role: a.role, status: "approved" as const, rejectionReason: undefined, salt, hash };
+    const fields = { name: a.name.trim(), username, email, role: a.role, status: "approved" as const, rejectionReason: undefined, salt, hash, iterations };
     if (existing) {
       await ctx.db.patch(existing._id, fields);
+      // New password: sign the account out everywhere, so an old (possibly stolen) session stops working.
+      for (const s of await ctx.db.query("sessions").withIndex("by_userId", (q) => q.eq("userId", existing._id)).take(200)) await ctx.db.delete(s._id);
       return `updated ${a.role} ${email}`;
     }
     await ctx.db.insert("users", { ...fields, createdAt: Date.now() });

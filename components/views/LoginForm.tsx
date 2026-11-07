@@ -7,6 +7,7 @@ import { isEmail, safeNext, type Role } from "@/lib/auth";
 import { T } from "@/lib/theme";
 import { useAuth } from "../auth";
 import { AuthLayout, Checkbox, Field, FormError, LoginTabs, SubmitButton } from "../auth-ui";
+import Turnstile from "../Turnstile";
 
 const COPY = {
   student: { title: "Welcome back", subtitle: "Log in to continue learning.", cta: "Log in", home: "/my-courses", placeholder: "you@email.com" },
@@ -28,6 +29,10 @@ export default function LoginForm({ role }: { role: Role }) {
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
   const [formError, setFormError] = useState("");
   const [loading, setLoading] = useState(false);
+  // The server asks for a CAPTCHA after repeated failures (instead of locking the account). Tokens are single-use.
+  const [needCaptcha, setNeedCaptcha] = useState(false);
+  const [captcha, setCaptcha] = useState<string | null>(null);
+  const [captchaKey, setCaptchaKey] = useState(0);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,12 +43,25 @@ export default function LoginForm({ role }: { role: Role }) {
     setErrors(errs);
     setFormError("");
     if (Object.keys(errs).length) return;
+    if (needCaptcha && !captcha) return setFormError("Please complete the “I’m human” check first.");
 
     setLoading(true);
-    const r = await logIn({ email, password, role, remember });
-    setLoading(false);
-    if (!r.ok) return setFormError(r.error);
-    router.replace(safeNext(next, c.home));
+    try {
+      const r = await logIn({ email, password, role, remember, captchaToken: captcha ?? undefined });
+      if (!r.ok) {
+        if (r.captcha) setNeedCaptcha(true);
+        if (captcha || r.captcha) {
+          setCaptcha(null);
+          setCaptchaKey((k) => k + 1); // fresh widget: the used token can't be sent again
+        }
+        return setFormError(r.error);
+      }
+      router.replace(safeNext(next, c.home));
+    } catch {
+      setFormError("Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const q = next ? `?next=${encodeURIComponent(next)}` : "";
@@ -88,6 +106,7 @@ export default function LoginForm({ role }: { role: Role }) {
         <Checkbox checked={remember} onChange={setRemember}>
           Keep me logged in on this device
         </Checkbox>
+        {needCaptcha && <Turnstile key={captchaKey} onToken={setCaptcha} />}
         <SubmitButton loading={loading} color={role === "student" ? T.purple : T.orange}>
           {c.cta}
         </SubmitButton>

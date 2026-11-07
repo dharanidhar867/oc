@@ -18,6 +18,7 @@ export default defineSchema({
     ),
     salt: v.string(),
     hash: v.string(), // PBKDF2-SHA256 of the password; plaintext is never stored
+    iterations: v.optional(v.number()), // PBKDF2 work factor used for `hash`; missing = 100k (older accounts, upgraded at next login)
     createdAt: v.number(),
   })
     .index("by_email", ["email"])
@@ -34,12 +35,29 @@ export default defineSchema({
     .index("by_tokenHash", ["tokenHash"])
     .index("by_userId", ["userId"]),
 
-  // Brute-force protection: repeated failures on an identifier lock logins for a while.
+  // Brute-force protection: after repeated failures on an identifier, logging in needs a CAPTCHA (no hard lock-out,
+  // so an attacker can't lock a real user out just by typing wrong passwords).
   loginAttempts: defineTable({
     identifier: v.string(),
     failures: v.number(),
-    lockedUntil: v.number(),
+    captchaUntil: v.optional(v.number()),
+    lockedUntil: v.optional(v.number()), // LEGACY (old hard lock-out); ignored
   }).index("by_identifier", ["identifier"]),
+
+  // Sign-ups waiting for their emailed code. The account is only created once the code is entered,
+  // so sign-up never reveals whether an email is already registered.
+  pendingSignups: defineTable({
+    email: v.string(),
+    name: v.string(),
+    role: v.union(v.literal("student"), v.literal("instructor")),
+    application: v.optional(v.object({ headline: v.string(), teaches: v.string(), bio: v.string(), link: v.optional(v.string()), submittedAt: v.number() })),
+    salt: v.string(),
+    hash: v.string(),
+    iterations: v.optional(v.number()),
+    codeHash: v.string(), // SHA-256 of email + code; the code itself is never stored
+    attempts: v.number(),
+    expiresAt: v.number(),
+  }).index("by_email", ["email"]),
 
   submissions: defineTable({
     instructorId: v.id("users"),
@@ -143,7 +161,26 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_userId_and_courseId", ["userId", "courseId"])
-    .index("by_orderId", ["orderId"]),
+    .index("by_orderId", ["orderId"])
+    .index("by_courseId", ["courseId"]),
+
+  // Per-student lesson progress. Written only by learning.ts / video.ts after an ownership check.
+  lessonProgress: defineTable({
+    userId: v.id("users"),
+    courseId: v.id("submissions"),
+    lessonId: v.id("lessons"),
+    lastWatchedAt: v.number(),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_userId_and_courseId", ["userId", "courseId"])
+    .index("by_userId_and_lessonId", ["userId", "lessonId"]),
+
+  // Fixed-window rate-limit counters (see model.ts rateLimit). key = "<action>:<subject>".
+  rateBuckets: defineTable({
+    key: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+  }).index("by_key", ["key"]),
 
   audit: defineTable({
     at: v.number(),

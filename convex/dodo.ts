@@ -23,6 +23,25 @@ async function dodo(path: string, init?: { method: "POST"; body: unknown }) {
   return (await res.json()) as Record<string, unknown>;
 }
 
+const urlProtocol = (s: string) => {
+  try {
+    return new URL(s).protocol;
+  } catch {
+    return null;
+  }
+};
+
+/** SITE_URL as an origin, only if it is HTTPS (plain HTTP allowed for localhost testing). Otherwise null. */
+function siteOrigin(): string | null {
+  try {
+    const u = new URL(process.env.SITE_URL ?? "");
+    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+    if (u.protocol === "https:" || (u.protocol === "http:" && local)) return u.origin;
+    console.error("[dodo] SITE_URL must be an https:// URL: refusing to send buyers back over plain HTTP");
+  } catch {}
+  return null;
+}
+
 /** Creates a new hosted payment page for the caller's own pending order and returns its URL. */
 export const startCheckout = action({
   args: { token: v.string(), orderId: v.id("orders") },
@@ -32,9 +51,12 @@ export const startCheckout = action({
     if (order.status !== "pending" || order.expiresAt <= Date.now()) return { ok: false, error: "This checkout session is no longer active." };
     // Always a fresh Dodo session: an old one may hold a failed/abandoned attempt and would only show that result again.
     // A payment on an older session still finds this order through metadata.order_id.
+    if (!(await ctx.runMutation(internal.payments.allowCheckoutAttempt, { userId: order.userId }))) {
+      return { ok: false, error: "Too many payment attempts. Please wait a few minutes and try again." };
+    }
 
     const productId = process.env.DODO_PRODUCT_ID;
-    const site = process.env.SITE_URL;
+    const site = siteOrigin();
     if (!productId || !site) return { ok: false, error: "Payments are not configured yet." };
     if (order.totalCents <= 0) return { ok: false, error: "Nothing to pay for." };
 
@@ -45,10 +67,11 @@ export const startCheckout = action({
           // The amount comes from the server's own copy of the order, never from the browser.
           product_cart: [{ product_id: productId, quantity: 1, amount: order.totalCents }],
           metadata: { order_id: orderId },
-          return_url: `${site.replace(/\/$/, "")}/checkout/${orderId}`,
+          return_url: `${site}/checkout/${orderId}`,
         },
       });
-      const url = typeof s.checkout_url === "string" ? s.checkout_url : null;
+      // The browser navigates straight to this, so only ever an https:// page (never javascript: or another scheme).
+      const url = typeof s.checkout_url === "string" && urlProtocol(s.checkout_url) === "https:" ? s.checkout_url : null;
       const sessionId = typeof s.session_id === "string" ? s.session_id : null;
       if (!url || !sessionId) return { ok: false, error: "Could not start the payment. Please try again." };
       await ctx.runMutation(internal.payments.setCheckout, { orderId, providerRef: sessionId, checkoutUrl: url });
@@ -92,7 +115,14 @@ export const handleEvent = internalAction({
           currency: String(p.currency ?? ""),
         });
       } catch (e) {
-        console.error("markPaid rejected", paymentId, e);
+        // Money was taken but didn't match the order, so no access was granted. Refund it in the Dodo dashboard.
+        console.error("PAYMENT NOT APPLIED (amount/currency mismatch), REFUND IT IN DODO", {
+          paymentId,
+          orderId: order._id,
+          expected: `${order.totalCents} ${order.currency}`,
+          charged: `${String(p.total_amount)} ${String(p.currency)}`,
+          error: e instanceof Error ? e.message : String(e),
+        });
       }
       return;
     }

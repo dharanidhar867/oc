@@ -7,11 +7,14 @@ import { api } from "@/convex/_generated/api";
 import { LEVELS, SORTS, fmt, money } from "@/lib/data";
 import { DISPLAY, T } from "@/lib/theme";
 import { useStore } from "../store";
+import { Doodle } from "../sticker-fx";
 
 function Radio({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
   return (
     <div onClick={onClick} style={{ display: "flex", gap: 10, alignItems: "center", padding: "6px 0", cursor: "pointer", fontSize: 15 }}>
-      <span style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${T.purple}`, background: on ? T.purple : "transparent" }}></span>
+      <span style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${T.ink}`, display: "grid", placeItems: "center", flex: "none" }}>
+        {on && <span className="pop-in" style={{ width: 10, height: 10, borderRadius: "50%", background: T.purple }} />}
+      </span>
       {label}
     </div>
   );
@@ -66,13 +69,13 @@ export default function CatalogView() {
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {live.map((c) => (
+        <div style={{ display: "flex", flexDirection: "column", gap: 24, paddingTop: 10 }}>
+          {live.map((c, i) => (
             <Link
               key={c.id}
               href={`/course/live/${c.id}`}
-              className="nl card-hover"
-              style={{ cursor: "pointer", background: "#fff", borderRadius: 28, padding: 14, display: "grid", gridTemplateColumns: "230px minmax(0,1fr) 120px", gap: 20, alignItems: "center" }}
+              className="nl card-hover taped taped-left"
+              style={{ cursor: "pointer", background: "#fff", borderRadius: 28, padding: 14, display: "grid", gridTemplateColumns: "230px minmax(0,1fr) 120px", gap: 20, alignItems: "center", ["--r" as string]: `${i % 2 ? 0.4 : -0.4}deg` }}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={c.thumbnail} alt="" style={{ width: "100%", height: 130, objectFit: "cover", borderRadius: 20 }} />
@@ -86,13 +89,15 @@ export default function CatalogView() {
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ font: `800 22px ${DISPLAY}` }}>{money(c.price)}</div>
-                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 700, background: T.yellow, padding: "3px 10px", borderRadius: 99, display: "inline-block" }}>New</div>
+                <div style={{ marginTop: 8, fontSize: 12, fontWeight: 800, background: T.yellow, padding: "3px 10px", borderRadius: 99, display: "inline-block", transform: "rotate(-6deg)", boxShadow: "0 2px 0 oklch(0.72 0.12 85)" }}>New</div>
               </div>
             </Link>
           ))}
           {live.length === 0 && (
             <div style={{ background: "#fff", borderRadius: 28, padding: 50, textAlign: "center", color: T.muted }}>
-              No courses here yet. Check back soon.
+              <Doodle />
+              <div style={{ font: `800 22px ${DISPLAY}`, color: T.ink }}>No courses here yet</div>
+              <div style={{ marginTop: 6 }}>Check back soon, new courses land every week.</div>
             </div>
           )}
         </div>

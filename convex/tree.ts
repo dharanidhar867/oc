@@ -2,10 +2,10 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { MAX_LESSONS_PER_COURSE, MAX_SECTIONS_PER_COURSE } from "./limits";
-import { discardVideo, watchUrl } from "./uploads";
+import { discardVideo } from "./uploads";
 
-/** Sections with their lessons, in order. `withUrls` adds a playable URL — only pass true after authorising the caller. */
-export async function loadTree(ctx: QueryCtx, courseId: Id<"submissions">, withUrls: boolean, approvedOnly = false) {
+/** Sections with their lessons, in order. Never includes video URLs: those come only from video.play, after an access check. */
+export async function loadTree(ctx: QueryCtx, courseId: Id<"submissions">, approvedOnly = false) {
   const sections = await ctx.db.query("sections").withIndex("by_courseId", (q) => q.eq("courseId", courseId)).take(MAX_SECTIONS_PER_COURSE + 5);
   const lessons = await ctx.db.query("lessons").withIndex("by_courseId", (q) => q.eq("courseId", courseId)).take(MAX_LESSONS_PER_COURSE + 5);
   const out = [];
@@ -20,7 +20,7 @@ export async function loadTree(ctx: QueryCtx, courseId: Id<"submissions">, withU
         size: l.size,
         status: l.status,
         reason: l.reason,
-        videoUrl: withUrls ? await watchUrl(ctx, l) : null,
+        hasVideo: !!(l.assetId || l.videoId),
       });
     }
     if (approvedOnly && ls.length === 0) continue; // a section with nothing approved yet isn't shown to students
