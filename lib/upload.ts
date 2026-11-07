@@ -1,10 +1,7 @@
-// Browser-side helpers for sending a video straight to Convex storage.
-// These limits only give instant feedback — Convex re-checks every one of them on the server.
+// Browser-side helpers for sending a video straight to Gumlet.
+// These limits only give instant feedback — the server re-checks what it can (see convex/uploads.ts).
 
-import { toWebm } from "./convert";
-
-export const MAX_VIDEO_MB = 200; // size of the converted WebM that gets stored
-export const MAX_SOURCE_MB = 500; // largest MP4 we’ll try to convert in the browser
+export const MAX_VIDEO_MB = 200; // keep in step with MAX_VIDEO_BYTES in convex/limits.ts
 export const MAX_LESSON_MIN = 15;
 export const MAX_PROMO_MIN = 2;
 
@@ -12,10 +9,9 @@ export const fmtDuration = (s: number) => `${Math.floor(s / 60)}:${String(Math.r
 
 /** Quick client-side check; returns an error message or null. */
 export function videoProblem(f: File, maxSeconds: number, seconds: number): string | null {
-  if (!["video/mp4", "video/webm"].includes(f.type)) return "Use an MP4 or WebM video.";
+  if (!["video/mp4", "video/webm"].includes(f.type)) return "Please choose an MP4 video.";
   const mb = f.size / 1048576;
-  if (f.type === "video/webm" && mb > MAX_VIDEO_MB) return `That video is ${mb.toFixed(0)} MB — the limit is ${MAX_VIDEO_MB} MB.`;
-  if (mb > MAX_SOURCE_MB) return `That video is ${mb.toFixed(0)} MB — please keep it under ${MAX_SOURCE_MB} MB.`;
+  if (mb > MAX_VIDEO_MB) return `That video is ${mb.toFixed(0)} MB — the limit is ${MAX_VIDEO_MB} MB.`;
   if (!(seconds > 0)) return "We couldn’t read that video. Try a different file.";
   if (seconds > maxSeconds) return `That video is ${fmtDuration(seconds)} long — the limit is ${Math.floor(maxSeconds / 60)} minutes.`;
   return null;
@@ -37,39 +33,31 @@ export function readDuration(f: File): Promise<number> {
   });
 }
 
-/** POSTs the file to a Convex upload URL (with progress) and returns the storage id. */
-export function uploadVideo(uploadUrl: string, f: File, onProgress?: (pct: number) => void): Promise<string> {
+/** PUTs the file to a Gumlet upload URL, reporting progress. */
+export function uploadVideo(uploadUrl: string, f: File, onProgress?: (pct: number) => void): Promise<void> {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest();
-    x.open("POST", uploadUrl);
-    x.setRequestHeader("Content-Type", f.type);
+    x.open("PUT", uploadUrl);
+    x.setRequestHeader("Content-Type", f.type || "video/mp4");
     x.upload.onprogress = (e) => e.lengthComputable && onProgress?.(Math.round((e.loaded / e.total) * 100));
-    x.onload = () => {
-      try {
-        const { storageId } = JSON.parse(x.responseText);
-        if (x.status >= 200 && x.status < 300 && storageId) return resolve(storageId);
-      } catch {}
-      reject(new Error("Upload failed. Please try again."));
-    };
+    x.onload = () => (x.status >= 200 && x.status < 300 ? resolve() : reject(new Error("Upload failed. Please try again.")));
     x.onerror = () => reject(new Error("Upload failed — check your connection and try again."));
     x.send(f);
   });
 }
 
 /**
- * Converts to WebM (if needed), then uploads. The upload slot is only requested AFTER a successful
- * conversion, so a failed conversion never uses up the daily upload allowance.
+ * Asks the server for a Gumlet upload slot, then uploads. Gumlet converts the video itself, so there is no
+ * processing in the browser. Returns what the server needs to attach the video to a lesson / course.
  */
-export async function convertAndUpload(file: File, seconds: number, getUploadUrl: () => Promise<string>, onStatus: (text: string) => void): Promise<string> {
-  const webm = await toWebm(file, (p) => onStatus(p.phase === "loading" ? "Preparing converter…" : `Converting to WebM… ${p.pct}%`), seconds);
-  if (webm.size > MAX_VIDEO_MB * 1024 * 1024) {
-    throw new Error(`After conversion the video is ${(webm.size / 1048576).toFixed(0)} MB — the limit is ${MAX_VIDEO_MB} MB. Shorten the lesson or lower its quality.`);
-  }
-  const url = await getUploadUrl();
-  return uploadVideo(url, webm, (n) => onStatus(`Uploading… ${n}%`));
+export async function uploadToGumlet(file: File, getUpload: () => Promise<{ uploadUrl: string; assetId: string }>, onStatus: (text: string) => void) {
+  onStatus("Starting upload…");
+  const { uploadUrl, assetId } = await getUpload();
+  await uploadVideo(uploadUrl, file, (n) => onStatus(`Uploading… ${n}%`));
+  return { assetId, size: file.size };
 }
 
-/** Turns anything that can be thrown (Error, Convex error, plain string, ffmpeg object) into text a person can read. */
+/** Turns anything that can be thrown (Error, Convex error, plain string) into text a person can read. */
 export function errorMessage(e: unknown, fallback = "Something went wrong. Please try again."): string {
   console.error("[quickai]", e);
   if (typeof e === "string" && e.trim()) return e.replace(/^Error:s*/, "");

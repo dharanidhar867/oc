@@ -5,14 +5,20 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { CATS, fmt } from "@/lib/data";
-import { DISPLAY, MONO, T, pastel } from "@/lib/theme";
+import { DISPLAY, T, pastel } from "@/lib/theme";
 import { useStore } from "../store";
+import { useAuth } from "../auth";
 import Reveal from "../Reveal";
+import { HeroArt, TopicGlyph } from "../Art";
+import TrustedBy from "../TrustedBy";
+import { RECOMMENDED, REVIEWS, STATS } from "@/lib/home-content";
 
 const POPULAR = ["Python", "Figma", "Excel", "Spanish", "Guitar", "Yoga", "Prompt engineering"];
 
 export default function HomeView() {
   const { set } = useStore();
+  const { user: me, ready } = useAuth();
+  const isStudent = !ready || !!me; // teaching promos are for logged-out visitors only; hidden until auth is known
   const live = useQuery(api.catalog.listLive) ?? [];
   const countOf = (name: string) => live.filter((c) => c.category === name).length;
   const router = useRouter();
@@ -41,9 +47,11 @@ export default function HomeView() {
               <Link href="/courses" className="nl btn-hover" style={{ background: T.orange, fontWeight: 700, padding: "16px 30px", borderRadius: 99, cursor: "pointer" }}>
                 Browse all courses
               </Link>
-              <Link href="/instructor" className="nl btn-hover" style={{ background: "#fff", fontWeight: 700, padding: "16px 30px", borderRadius: 99, cursor: "pointer" }}>
-                Become an instructor
-              </Link>
+              {!isStudent && (
+                <Link href="/instructor" className="nl btn-hover" style={{ background: "#fff", fontWeight: 700, padding: "16px 30px", borderRadius: 99, cursor: "pointer" }}>
+                  Become an instructor
+                </Link>
+              )}
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 22, fontSize: 14 }}>
               <span style={{ color: T.muted2, fontWeight: 600 }}>Popular:</span>
@@ -60,15 +68,42 @@ export default function HomeView() {
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gridTemplateRows: "170px 170px", gap: 14 }}>
-            <div className="float-tile" style={{ gridRow: "span 2", borderRadius: 32, background: "oklch(0.88 0.09 300)", display: "flex", alignItems: "flex-end", padding: 16, font: `12px ${MONO}`, color: "oklch(0.4 0.1 300)" }}>
-              [ hero photo — learner ]
+            <div className="float-tile" style={{ gridRow: "span 2", borderRadius: 32, overflow: "hidden" }}>
+              <HeroArt kind="learner" />
             </div>
-            <div className="float-tile" style={{ borderRadius: 32, background: "oklch(0.9 0.1 90)", display: "flex", alignItems: "flex-end", padding: 16, font: `12px ${MONO}`, color: "oklch(0.4 0.1 90)" }}>
-              [ photo ]
+            <div className="float-tile" style={{ borderRadius: 32, overflow: "hidden" }}>
+              <HeroArt kind="idea" />
             </div>
-            <div className="float-tile" style={{ borderRadius: 32, background: "oklch(0.9 0.08 150)", display: "flex", alignItems: "flex-end", padding: 16, font: `12px ${MONO}`, color: "oklch(0.4 0.1 150)" }}>
-              [ photo ]
+            <div className="float-tile" style={{ borderRadius: 32, overflow: "hidden" }}>
+              <HeroArt kind="books" />
             </div>
+          </div>
+        </div>
+
+        {/* Stats strip */}
+        <div style={{ display: "flex", gap: 40, justifyContent: "center", fontSize: 15, color: T.muted2, flexWrap: "wrap", marginTop: 44 }}>
+          {STATS.map(([b, t]) => (
+            <span key={b}>
+              <b style={{ color: T.ink }}>{b}</b> {t}
+            </span>
+          ))}
+        </div>
+
+        {/* Trending topics */}
+        <div style={{ marginTop: 34 }}>
+          <div style={{ font: `800 20px ${DISPLAY}`, marginBottom: 12 }}>🔥 Trending topics</div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 14 }}>
+            {RECOMMENDED.slice(0, 4).map((r) => (
+              <div key={r.t} onClick={() => search(r.q)} className="card-hover" style={{ display: "flex", gap: 12, alignItems: "center", background: "#fff", borderRadius: 22, padding: 10, cursor: "pointer" }}>
+                <div style={{ width: 58, height: 58, borderRadius: 14, background: pastel(r.hue, 0.88, 0.09), flex: "none", display: "grid", placeItems: "center" }}>
+                  <TopicGlyph kind={r.art} hue={r.hue} size={32} />
+                </div>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, lineHeight: 1.2 }}>{r.t}</div>
+                  <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>{r.tag} right now</div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -117,8 +152,33 @@ export default function HomeView() {
         </Reveal>
       </section>
 
+      <TrustedBy />
+
+      {/* Most recommended */}
+      <section style={{ paddingTop: 56 }}>
+        <div style={{ font: `800 36px ${DISPLAY}`, letterSpacing: "-.02em" }}>Most recommended for you</div>
+        <div style={{ color: T.muted2, fontSize: 17, margin: "8px 0 24px" }}>AI and the other topics learners are choosing right now.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(0,1fr))", gap: 18 }}>
+          {RECOMMENDED.map((r) => (
+            <div key={r.t} onClick={() => search(r.q)} className="card-hover" style={{ background: "#fff", borderRadius: 28, padding: 14, cursor: "pointer", display: "flex", flexDirection: "column" }}>
+              <div style={{ height: 120, borderRadius: 20, background: pastel(r.hue, 0.88, 0.09), position: "relative", overflow: "hidden", display: "flex", alignItems: "flex-start", padding: 12 }}>
+                <span aria-hidden style={{ position: "absolute", right: -22, bottom: -34, width: 110, height: 110, borderRadius: "50%", background: pastel(r.hue, 0.93, 0.07) }} />
+                <span aria-hidden style={{ position: "absolute", left: "38%", top: -26, width: 56, height: 56, borderRadius: "50%", background: pastel(r.hue, 0.92, 0.06) }} />
+                <span aria-hidden style={{ position: "absolute", right: 26, bottom: 14 }}>
+                  <TopicGlyph kind={r.art} hue={r.hue} size={72} />
+                </span>
+                <span style={{ fontSize: 12, fontWeight: 800, background: r.tag === "Hot" ? T.purple : T.yellow, color: r.tag === "Hot" ? "#fff" : T.ink, padding: "4px 10px", borderRadius: 99 }}>{r.tag}</span>
+              </div>
+              <div style={{ font: `800 18px/1.25 ${DISPLAY}`, margin: "14px 4px 4px" }}>{r.t}</div>
+              <div style={{ fontSize: 13, color: T.muted, margin: "0 4px 12px", lineHeight: 1.45 }}>{r.sub}</div>
+              <div style={{ margin: "auto 4px 4px", fontWeight: 800, fontSize: 14, color: T.purple }}>Explore courses →</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* Promos */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20, marginTop: 56 }}>
+      <div style={{ display: "grid", gridTemplateColumns: isStudent ? "1fr 1fr" : "1fr 1fr 1fr", gap: 20, marginTop: 56 }}>
         <div style={{ background: "oklch(0.9 0.08 300)", borderRadius: 30, padding: 30 }}>
           <div style={{ font: `800 26px/1.1 ${DISPLAY}` }}>Skill paths</div>
           <div style={{ margin: "10px 0 16px", color: "#4b4466" }}>Curated sequences that take you from first lesson to job-ready.</div>
@@ -129,15 +189,30 @@ export default function HomeView() {
           <div style={{ margin: "10px 0 16px", color: "#3f5a47" }}>Upskill your whole team with analytics, assignments and SSO.</div>
           <b>Request a demo →</b>
         </div>
-        <div style={{ background: "oklch(0.9 0.1 90)", borderRadius: 30, padding: 30 }}>
-          <div style={{ font: `800 26px/1.1 ${DISPLAY}` }}>Teach what you know</div>
-          <div style={{ margin: "10px 0 16px", color: "#5f5320" }}>Reach millions of learners and keep up to 70% of every sale.</div>
-          <Link href="/instructor" className="nl" style={{ fontWeight: "bold", cursor: "pointer" }}>
-            Start teaching →
-          </Link>
-        </div>
+        {!isStudent && (
+          <div style={{ background: "oklch(0.9 0.1 90)", borderRadius: 30, padding: 30 }}>
+            <div style={{ font: `800 26px/1.1 ${DISPLAY}` }}>Teach what you know</div>
+            <div style={{ margin: "10px 0 16px", color: "#5f5320" }}>Reach millions of learners and keep up to 70% of every sale.</div>
+            <Link href="/instructor" className="nl" style={{ fontWeight: "bold", cursor: "pointer" }}>
+              Start teaching →
+            </Link>
+          </div>
+        )}
       </div>
 
+      {/* Testimonials */}
+      <div style={{ font: `800 32px ${DISPLAY}`, margin: "56px 0 18px", letterSpacing: "-.02em" }}>Learners love it</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(0,1fr))", gap: 20 }}>
+        {REVIEWS.map((r) => (
+          <div key={r.n} style={{ background: "#fff", borderRadius: 28, padding: 24 }}>
+            <div style={{ color: T.star }}>★★★★★</div>
+            <div style={{ fontSize: 16, lineHeight: 1.5, margin: "10px 0 16px" }}>“{r.x}”</div>
+            <div style={{ fontWeight: 700, fontSize: 14 }}>
+              {r.n} <span style={{ fontWeight: 400, color: T.muted }}>· {r.c}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

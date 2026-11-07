@@ -5,13 +5,17 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { CATS } from "@/lib/data";
 import { DISPLAY, T } from "@/lib/theme";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 import { useStore } from "./store";
 import { useAuth } from "./auth";
 
 function NavBar({ activeCat }: { activeCat: string | null }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { q, set, cart, resetPaid } = useStore();
+  const { q, set } = useStore();
+  const { token, user, ready } = useAuth();
+  const cartCount = useQuery(api.cart.list, token ? { token } : "skip")?.length ?? 0;
   const onCatalog = pathname === "/courses";
 
   return (
@@ -42,15 +46,29 @@ function NavBar({ activeCat }: { activeCat: string | null }) {
             Search
           </Link>
         </div>
-        <Link href="/instructor" className="nl" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
-          Teach on QuickAI
-        </Link>
-        <Link href="/my-courses" className="nl" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
-          My learning
-        </Link>
-        <Link href="/cart" className="nl" onClick={resetPaid} style={{ background: "#fff", borderRadius: 99, padding: "10px 18px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
-          Cart · {cart.length}
-        </Link>
+        {/* Students only see learning links; the teaching link is for guests and instructors. Admins use their console. */}
+        {ready && (!user || user.role === "instructor") && (
+          <Link href="/instructor" className="nl" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+            {user ? "Instructor studio" : "Teach on QuickAI"}
+          </Link>
+        )}
+        {ready && user?.role === "admin" && (
+          <Link href="/admin" className="nl" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+            Admin console
+          </Link>
+        )}
+        {user?.role !== "admin" && (
+          <>
+            <Link href="/my-courses" className="nl" style={{ fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+              My learning
+            </Link>
+            {user?.role !== "instructor" && (
+              <Link href="/cart" className="nl" style={{ background: "#fff", borderRadius: 99, padding: "10px 18px", fontWeight: 700, fontSize: 15, cursor: "pointer" }}>
+                Cart · {cartCount}
+              </Link>
+            )}
+          </>
+        )}
         <AuthButtons />
       </div>
       <div style={{ display: "flex", gap: 6, padding: "0 40px 12px", maxWidth: 1360, margin: "0 auto", overflow: "hidden" }}>
@@ -85,6 +103,8 @@ function NavWithParams() {
 }
 
 function Footer() {
+  const { user: me, ready } = useAuth();
+  const isStudent = !ready || !!me; // "Teach" column is for logged-out visitors only
   const col = (title: string, items: string[]) => (
     <div>
       <b style={{ color: "#fff" }}>{title}</b>
@@ -98,7 +118,7 @@ function Footer() {
   );
   return (
     <div style={{ background: "#1c1530", color: "#d9d0f0", padding: "44px 40px" }}>
-      <div style={{ maxWidth: 1360, margin: "0 auto", display: "grid", gridTemplateColumns: "1.4fr 1fr 1fr 1fr 1fr", gap: 30, fontSize: 14, lineHeight: 2 }}>
+      <div style={{ maxWidth: 1360, margin: "0 auto", display: "grid", gridTemplateColumns: isStudent ? "1.4fr 1fr 1fr 1fr" : "1.4fr 1fr 1fr 1fr 1fr", gap: 30, fontSize: 14, lineHeight: 2 }}>
         <div>
           <div style={{ font: `800 26px ${DISPLAY}`, color: "#fff" }}>
             quickai<span style={{ color: T.orange }}>•</span>
@@ -106,7 +126,7 @@ function Footer() {
           <div style={{ lineHeight: 1.6, marginTop: 8, color: "#a99dc9" }}>Learn anything, from anyone, anywhere.</div>
         </div>
         {col("QuickAI", ["About", "Careers", "Blog", "Press"])}
-        {col("Teach", ["Become an instructor", "Instructor hub", "Affiliates"])}
+        {!isStudent && col("Teach", ["Become an instructor", "Instructor hub", "Affiliates"])}
         {col("Support", ["Help center", "Contact", "Accessibility", "Refunds"])}
         {col("Legal", ["Terms", "Privacy", "Cookie settings"])}
       </div>

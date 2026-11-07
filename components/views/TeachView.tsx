@@ -61,7 +61,7 @@ export default function TeachView() {
               <StatusBadge status={s.status} />
               <div style={{ display: "flex", gap: 14 }}>
                 <Link href={`/instructor/course/${s.id}`} className="nl" style={{ ...link, color: T.purple }}>
-                  {s.status === "draft" || s.status === "rejected" ? "Edit lessons" : "View"}
+                  {s.status === "draft" || s.status === "rejected" ? "Edit lessons" : s.status === "live" ? "Add lessons" : "View"}
                 </Link>
                 {s.status === "draft" && (
                   <span onClick={() => submitForReview(s.id)} style={{ ...link, color: T.purple }}>

@@ -9,4 +9,3 @@ export const PROMO_UPLOADS_PER_DAY = 5;
 export const MIN_COURSE_SECONDS = 0; // no minimum total length: a course can be submitted once it has a lesson
 export const MIN_LESSONS = 1;
 export const DAY_MS = 24 * 60 * 60 * 1000;
-export const VIDEO_TYPES = ["video/webm"]; // the browser converts MP4 -> WebM before upload

@@ -7,7 +7,7 @@ import { CATS } from "../lib/data";
 import { MAX_PROMO_SECONDS, MIN_COURSE_SECONDS, MIN_LESSONS } from "./limits";
 import { requireRole } from "./model";
 import { deleteCourse, loadTree } from "./tree";
-import { checkVideo } from "./uploads";
+import { claimAsset, discardVideo, watchUrl } from "./uploads";
 
 const shape = (s: Doc<"submissions">) => ({ ...s, id: s._id as string, instructorId: s.instructorId as string });
 
@@ -38,6 +38,11 @@ export function assertEditable(course: Doc<"submissions">) {
   if (course.status !== "draft" && course.status !== "rejected") throw new ConvexError("Withdraw this course from review before editing its lessons.");
 }
 
+/** New sections and lessons can also be added to a live course. They stay hidden from students until an admin approves them. */
+export function assertCanAdd(course: Doc<"submissions">) {
+  if (course.status !== "draft" && course.status !== "rejected" && course.status !== "live") throw new ConvexError("Withdraw this course from review before editing its lessons.");
+}
+
 /** Full course for the owner's editor, including playable lesson URLs. */
 export const get = query({
   args: { token: v.optional(v.string()), id: v.id("submissions") },
@@ -45,7 +50,7 @@ export const get = query({
     if (!token) return null;
     const { course } = await ownCourse(ctx, token, id);
     const tree = await loadTree(ctx, id, true);
-    return { ...shape(course), promoUrl: course.promoVideoId ? await ctx.storage.getUrl(course.promoVideoId) : null, ...tree };
+    return { ...shape(course), promoUrl: await watchUrl(ctx, { assetId: course.promoAssetId, videoId: course.promoVideoId }), ...tree };
   },
 });
 
@@ -59,7 +64,8 @@ export const create = mutation({
     price: v.number(),
     description: v.string(),
     thumbnail: v.string(),
-    promoVideoId: v.id("_storage"),
+    promoAssetId: v.string(),
+    promoSize: v.number(),
     promoDuration: v.number(),
   },
   handler: async (ctx, a) => {
@@ -68,17 +74,17 @@ export const create = mutation({
     if (title.length < 5 || title.length > 120) throw new ConvexError("Title must be 5–120 characters.");
     if (subtitle.length > 200) throw new ConvexError("Subtitle is too long.");
     if (description.length < 60 || description.length > 5000) throw new ConvexError("Description must be 60–5000 characters.");
-    if (!Number.isFinite(a.price) || a.price < 0 || a.price > 1000) throw new ConvexError("Enter a valid price.");
+    if (!Number.isFinite(a.price) || a.price < 0 || a.price > 100000) throw new ConvexError("Enter a valid price.");
     if (!CATS.some((c) => c.name === a.category)) throw new ConvexError("Choose a category from the list."); // the course is listed under this catalog category
     if (a.level.length > 30) throw new ConvexError("Invalid level.");
     if (!/^data:image\/(png|jpeg|webp);base64,/.test(a.thumbnail) || a.thumbnail.length > 700_000) throw new ConvexError("Upload a smaller course image (PNG, JPEG or WebP).");
 
-    const v1 = await checkVideo(ctx, a.promoVideoId);
-    if (!v1.ok) return v1;
     if (!(a.promoDuration > 0) || a.promoDuration > MAX_PROMO_SECONDS) {
-      await ctx.storage.delete(a.promoVideoId);
+      await discardVideo(ctx, { assetId: a.promoAssetId });
       return { ok: false as const, error: "The promo video must be 2 minutes or shorter." };
     }
+    const v1 = await claimAsset(ctx, a.promoAssetId, me._id, "promo", a.promoSize);
+    if (!v1.ok) return v1;
     const id = await ctx.db.insert("submissions", {
       instructorId: me._id,
       instructorName: me.name,
@@ -89,7 +95,7 @@ export const create = mutation({
       price: Math.round(a.price * 100) / 100,
       description,
       thumbnail: a.thumbnail,
-      promoVideoId: a.promoVideoId,
+      promoAssetId: a.promoAssetId,
       promoDuration: Math.round(a.promoDuration),
       status: "draft", // lessons are added next, then the course is submitted for review
       updatedAt: Date.now(),

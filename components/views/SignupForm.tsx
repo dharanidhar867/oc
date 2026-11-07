@@ -139,11 +139,14 @@ export default function SignupForm() {
 
         {isTeacher && (
           <div style={{ background: "oklch(0.97 0.02 90)", borderRadius: 20, padding: "18px 18px 2px", marginBottom: 16 }}>
-            <div style={{ fontWeight: 800, marginBottom: 12 }}>Your teaching application</div>
-            <Field label="Professional headline" value={headline} onChange={setHeadline} error={errors.headline} placeholder="e.g. Senior data analyst with 10 years’ experience" />
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Your teaching application</div>
+            <div style={{ fontSize: 13, color: T.muted2, marginBottom: 14, lineHeight: 1.5 }}>
+              Your headline, what you teach, your experience and your link are shown to students on your course pages, so write them for students. Your email is never shown.
+            </div>
+            <Field label="Professional headline (shown to students)" value={headline} onChange={setHeadline} error={errors.headline} placeholder="e.g. Senior data analyst with 10 years’ experience" />
             <Field label="What would you like to teach?" value={teaches} onChange={setTeaches} error={errors.teaches} placeholder="e.g. Python, watercolor, Spanish" />
-            <Textarea label="About you & your experience" value={bio} onChange={setBio} error={errors.bio} placeholder="Why are you a good fit to teach this? Mention your background, projects or past teaching." />
-            <Field label="Portfolio / LinkedIn link (optional)" value={link} onChange={setLink} error={errors.link} placeholder="https://" />
+            <Textarea label="Your experience & qualifications (shown to students)" value={bio} onChange={setBio} error={errors.bio} placeholder="Your background, qualifications, projects and past teaching. Students read this before they buy." />
+            <Field label="LinkedIn or portfolio link (optional, shown to students)" value={link} onChange={setLink} error={errors.link} placeholder="https://" />
             <Checkbox checked={rights} onChange={setRights} error={errors.rights}>
               I own the rights to everything I’ll upload and I’ll follow QuickAI’s <b>Content Guidelines</b> (no explicit, hateful or illegal content).
             </Checkbox>

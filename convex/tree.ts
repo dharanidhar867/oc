@@ -2,15 +2,16 @@
 import type { Doc, Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
 import { MAX_LESSONS_PER_COURSE, MAX_SECTIONS_PER_COURSE } from "./limits";
+import { discardVideo, watchUrl } from "./uploads";
 
 /** Sections with their lessons, in order. `withUrls` adds a playable URL — only pass true after authorising the caller. */
-export async function loadTree(ctx: QueryCtx, courseId: Id<"submissions">, withUrls: boolean) {
+export async function loadTree(ctx: QueryCtx, courseId: Id<"submissions">, withUrls: boolean, approvedOnly = false) {
   const sections = await ctx.db.query("sections").withIndex("by_courseId", (q) => q.eq("courseId", courseId)).take(MAX_SECTIONS_PER_COURSE + 5);
   const lessons = await ctx.db.query("lessons").withIndex("by_courseId", (q) => q.eq("courseId", courseId)).take(MAX_LESSONS_PER_COURSE + 5);
   const out = [];
   for (const s of sections.sort((a, b) => a.order - b.order)) {
     const ls = [];
-    for (const l of lessons.filter((x) => x.sectionId === s._id).sort((a, b) => a.order - b.order)) {
+    for (const l of lessons.filter((x) => x.sectionId === s._id && (!approvedOnly || x.status === "approved")).sort((a, b) => a.order - b.order)) {
       ls.push({
         id: l._id as string,
         title: l.title,
@@ -19,9 +20,10 @@ export async function loadTree(ctx: QueryCtx, courseId: Id<"submissions">, withU
         size: l.size,
         status: l.status,
         reason: l.reason,
-        videoUrl: withUrls ? await ctx.storage.getUrl(l.videoId) : null,
+        videoUrl: withUrls ? await watchUrl(ctx, l) : null,
       });
     }
+    if (approvedOnly && ls.length === 0) continue; // a section with nothing approved yet isn't shown to students
     out.push({ id: s._id as string, title: s.title, order: s.order, lessons: ls });
   }
   const all = out.flatMap((s) => s.lessons);
@@ -37,7 +39,7 @@ export async function loadTree(ctx: QueryCtx, courseId: Id<"submissions">, withU
 
 export async function deleteLessonFiles(ctx: MutationCtx, lessons: Doc<"lessons">[]) {
   for (const l of lessons) {
-    await ctx.storage.delete(l.videoId);
+    await discardVideo(ctx, l);
     await ctx.db.delete(l._id);
   }
 }
@@ -48,6 +50,8 @@ export async function deleteCourse(ctx: MutationCtx, course: Doc<"submissions">)
   await deleteLessonFiles(ctx, lessons);
   const sections = await ctx.db.query("sections").withIndex("by_courseId", (q) => q.eq("courseId", course._id)).take(MAX_SECTIONS_PER_COURSE + 5);
   for (const s of sections) await ctx.db.delete(s._id);
-  if (course.promoVideoId) await ctx.storage.delete(course.promoVideoId);
+  const inCarts = await ctx.db.query("cartItems").withIndex("by_courseId", (q) => q.eq("courseId", course._id)).take(500);
+  for (const c of inCarts) await ctx.db.delete(c._id);
+  await discardVideo(ctx, { assetId: course.promoAssetId, videoId: course.promoVideoId });
   await ctx.db.delete(course._id);
 }
