@@ -11,6 +11,7 @@ import { errorMessage } from "@/lib/upload";
 import { DISPLAY, T } from "@/lib/theme";
 import { useAuth } from "../auth";
 import { Doodle, ticket } from "../sticker-fx";
+import { CheckoutSteps, Receipt, TrustList } from "../CheckoutParts";
 
 export default function CartView() {
   const { token } = useAuth();
@@ -41,7 +42,8 @@ export default function CartView() {
 
   return (
     <div style={{ maxWidth: 1360, margin: "0 auto", padding: "10px 40px 60px" }}>
-      <div style={{ font: `800 46px ${DISPLAY}`, letterSpacing: "-.03em", margin: "10px 0 20px" }}>Shopping cart</div>
+      <h1 style={{ font: `800 46px ${DISPLAY}`, letterSpacing: "-.03em", margin: "10px 0 6px" }}>Shopping cart</h1>
+      {items.length > 0 && <CheckoutSteps current="cart" />}
 
       {live === undefined && <div style={{ minHeight: 200 }} />}
 
@@ -60,8 +62,8 @@ export default function CartView() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 30, alignItems: "flex-start" }}>
           <div style={{ flex: "1 1 520px", display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ color: T.muted2 }}>{items.length} course{items.length === 1 ? "" : "s"} in your cart</div>
-            {items.map((c, i) => (
-              <div key={c.id} className="card-hover" style={{ background: "#fff", borderRadius: 26, padding: 14, display: "grid", gridTemplateColumns: "150px minmax(0,1fr) auto", gap: 18, alignItems: "center", ["--r" as string]: `${i % 2 ? 0.35 : -0.35}deg` }}>
+            {items.map((c) => (
+              <div key={c.id} className="rc-item" style={{ background: "#fff", borderRadius: 26, padding: 14, display: "grid", gridTemplateColumns: "150px minmax(0,1fr) auto", gap: 18, alignItems: "center" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={c.thumbnail} alt="" style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 16 }} />
                 <div>
@@ -72,38 +74,36 @@ export default function CartView() {
                 </div>
                 <div style={{ textAlign: "right" }}>
                   <div style={{ font: `800 20px ${DISPLAY}` }}>{money(c.price)}</div>
-                  <div onClick={() => remove(c.id, c.title)} style={{ fontSize: 13, color: T.danger, cursor: "pointer", marginTop: 6, fontWeight: 700 }}>
+                  <button onClick={() => remove(c.id, c.title)} aria-label={`Remove ${c.title} from cart`} style={{ background: "none", border: 0, padding: 0, fontFamily: "inherit", fontSize: 13, color: T.danger, cursor: "pointer", marginTop: 6, fontWeight: 700 }}>
                     Remove
-                  </div>
+                  </button>
                 </div>
               </div>
             ))}
           </div>
 
-          <div style={{ flex: "0 0 380px", maxWidth: "100%", background: "#fff", borderRadius: 30, padding: 26, position: "sticky", top: 110 }}>
-            <div style={{ font: `800 22px ${DISPLAY}`, marginBottom: 14 }}>Order summary</div>
-            {items.map((c) => (
-              <div key={c.id} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 14, padding: "5px 0", color: T.body }}>
-                <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.title}</span>
-                <span>{money(c.price)}</span>
-              </div>
-            ))}
-            <div style={{ display: "flex", justifyContent: "space-between", font: `800 24px ${DISPLAY}`, padding: "14px 0", borderTop: "1.5px solid oklch(0.92 0.02 95)", marginTop: 8 }}>
-              <span>Total</span>
-              <span>{money(total)}</span>
-            </div>
-            <button
-              onClick={checkout}
-              className="btn-hover"
-              style={{ width: "100%", border: 0, background: T.purple, color: "#fff", fontWeight: 800, fontSize: 16, fontFamily: "inherit", padding: 14, borderRadius: 99, cursor: "pointer" }}
+          <div style={{ flex: "0 0 380px", maxWidth: "100%" }}>
+            <Receipt
+              subtitle={`QuickAI · ${items.length} course${items.length === 1 ? "" : "s"}`}
+              lines={items.map((c) => ({ key: c.id, title: c.title, price: money(c.price) }))}
+              total={money(total)}
             >
-              Checkout <span className="arr">→</span>
-            </button>
-            {note && (
-              <div role="status" style={{ marginTop: 14, background: T.bg, borderRadius: 16, padding: 14, fontSize: 14, lineHeight: 1.5, color: T.body }}>
-                {note}
+              <button
+                onClick={checkout}
+                className="btn-hover"
+                style={{ width: "100%", border: 0, background: T.purple, color: "#fff", fontWeight: 800, fontSize: 16, fontFamily: "inherit", padding: 14, borderRadius: 99, cursor: "pointer" }}
+              >
+                Checkout <span className="arr">→</span>
+              </button>
+              {note && (
+                <div role="status" style={{ marginTop: 14, background: T.bg, borderRadius: 16, padding: 14, fontSize: 14, lineHeight: 1.5, color: T.body }}>
+                  {note}
+                </div>
+              )}
+              <div style={{ marginTop: 18 }}>
+                <TrustList short />
               </div>
-            )}
+            </Receipt>
           </div>
         </div>
       )}
