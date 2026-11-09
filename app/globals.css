@@ -610,3 +610,267 @@ a.nl:hover {
   .course-layout { grid-template-columns: minmax(0, 1fr); }
   .course-buy { position: static; order: -1; }
 }
+
+/* =====================================================================
+   Course page · "Arcade" skin. Plain labels, arcade-flavoured visuals.
+   ===================================================================== */
+.arc-hero {
+  position: relative;
+  overflow: hidden;
+}
+.arc-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(oklch(0.38 0.1 300 / 0.3) 2px, transparent 2px) 0 0 / 100% 8px;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.arc-hero > * {
+  position: relative;
+}
+.arc-title {
+  text-shadow: 4px 4px 0 oklch(0.55 0.2 300), 8px 8px 0 oklch(0.2 0.07 300);
+}
+/* Preview screen: a chunky CRT frame with faint scanlines over the real video */
+.arc-screen {
+  position: relative;
+  border: 3px solid var(--ink);
+  border-radius: 18px;
+  box-shadow: inset 0 0 0 5px oklch(0.4 0.1 300);
+  overflow: hidden;
+  background: #000;
+}
+.arc-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 4px);
+  pointer-events: none;
+}
+/* Key-style tiles and rows: hard shadow, press down on hover */
+.arc-key {
+  border: 2px solid var(--ink);
+  box-shadow: 0 4px 0 var(--ink);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.2s ease;
+}
+.arc-key:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 var(--ink);
+}
+a.arc-key:active {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 var(--ink);
+}
+.arc-fact:hover {
+  background: oklch(0.88 0.12 90) !important;
+}
+.arc-lesson:hover {
+  background: oklch(0.97 0.04 90) !important;
+}
+.arc-card {
+  border: 2px solid var(--ink);
+  box-shadow: 0 8px 0 var(--ink);
+}
+/* Price as a coin */
+.arc-coin {
+  width: 96px;
+  height: 96px;
+  flex: none;
+  border-radius: 50%;
+  background: oklch(0.88 0.12 90);
+  border: 3px solid var(--ink);
+  display: grid;
+  place-items: center;
+  font: 800 28px var(--display);
+  letter-spacing: -0.02em;
+  box-shadow: inset 0 0 0 5px oklch(0.88 0.12 90), inset 0 0 0 7px var(--ink), 0 5px 0 oklch(0.72 0.12 85);
+  transform-origin: 50% 0;
+  animation: swing 2.4s ease 0.4s both;
+}
+.course-buy:hover .arc-coin {
+  animation: swing 1.6s ease both;
+}
+.arc-progress {
+  height: 12px;
+  border-radius: 99px;
+  border: 2px solid var(--ink);
+  background: oklch(0.94 0.02 95);
+  overflow: hidden;
+}
+.arc-progress > i {
+  display: block;
+  height: 100%;
+  background: oklch(0.88 0.12 90);
+  min-width: 4%;
+  transition: width 0.5s cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.arc-chip {
+  display: inline-block;
+  background: oklch(0.55 0.2 300);
+  color: #fff;
+  border-radius: 99px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+@media (max-width: 960px) {
+  .arc-title { font-size: 36px !important; }
+  .arc-facts { grid-template-columns: 1fr 1fr !important; }
+}
+@media (max-width: 560px) {
+  .arc-facts { grid-template-columns: 1fr !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .arc-coin { animation: none !important; }
+  .arc-key, .arc-progress > i { transition: none !important; }
+}
+
+/* =====================================================================
+   Cart & checkout · "Receipt" skin
+   ===================================================================== */
+.rc-wrap {
+  position: sticky;
+  top: 90px;
+  filter: drop-shadow(0 10px 22px oklch(0.3 0.1 300 / 0.16));
+}
+.rc-paper {
+  background: #fff;
+  padding: 26px 24px 46px;
+  border-radius: 22px 22px 0 0;
+  -webkit-mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 18px 100%;
+  mask: conic-gradient(from -45deg at bottom, #0000, #000 1deg 89deg, #0000 90deg) 50% / 18px 100%;
+  animation: printOut 0.9s steps(12, end) both;
+}
+.rc-head {
+  text-align: center;
+  border-bottom: 2px dashed oklch(0.85 0.04 300);
+  padding-bottom: 14px;
+  margin-bottom: 12px;
+}
+.rc-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+  font: 400 13px var(--mono);
+  padding: 5px 0;
+  color: #4b4466;
+}
+.rc-line > span:first-child {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rc-total {
+  display: flex;
+  justify-content: space-between;
+  font: 800 24px var(--display);
+  padding: 14px 0;
+  border-top: 2px dashed oklch(0.85 0.04 300);
+  margin-top: 8px;
+}
+/* Cart items lift when hovered */
+.rc-item {
+  transition: transform 0.35s var(--spring), box-shadow 0.3s ease;
+}
+.rc-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 10px 24px oklch(0.55 0.2 300 / 0.14);
+}
+/* Progress steps: Cart → Payment → Done */
+.rc-steps {
+  display: flex;
+  align-items: center;
+  max-width: 520px;
+  margin: 4px 0 22px;
+}
+.rc-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font: 800 14px var(--display);
+  color: #6b6585;
+}
+.rc-step .d {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid var(--ink);
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: var(--ink);
+}
+.rc-step.done .d {
+  background: oklch(0.5 0.13 150);
+  color: #fff;
+}
+.rc-step.cur {
+  color: var(--ink);
+}
+.rc-step.cur .d {
+  background: oklch(0.88 0.12 90);
+}
+.rc-ln {
+  flex: 1;
+  min-width: 24px;
+  margin: 0 10px;
+  border-top: 3px dashed oklch(0.75 0.05 300);
+}
+.rc-ln.done {
+  border-top: 3px solid oklch(0.5 0.13 150);
+}
+/* Padlock whose shackle snaps shut */
+.rc-lock {
+  width: 96px;
+  height: 96px;
+  position: relative;
+  flex: none;
+}
+.rc-lock .sh {
+  position: absolute;
+  left: 24px;
+  top: 2px;
+  width: 48px;
+  height: 46px;
+  border: 8px solid var(--ink);
+  border-bottom: 0;
+  border-radius: 26px 26px 0 0;
+  transform-origin: 100% 100%;
+  animation: lockShut 1s var(--spring) 0.4s both;
+}
+@keyframes lockShut {
+  from { transform: translateY(-14px) rotate(-18deg); }
+}
+.rc-lock .bd {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 6px;
+  height: 52px;
+  background: oklch(0.88 0.12 90);
+  border: 3px solid var(--ink);
+  border-radius: 14px;
+  box-shadow: 0 5px 0 oklch(0.72 0.12 85);
+  display: grid;
+  place-items: center;
+}
+.rc-lock .bd::after {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--ink);
+  box-shadow: 0 10px 0 -3px var(--ink);
+}
+@media (max-width: 960px) {
+  .rc-wrap { position: static; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rc-paper, .rc-lock .sh { animation: none !important; }
+  .rc-item { transition: none !important; }
+}

@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
 import { DISPLAY, MONO, T } from "@/lib/theme";
 import { useAuth } from "../auth";
+import { CheckoutSteps, Receipt, TrustList } from "../CheckoutParts";
 
 const fmt = (paise: number, currency: string) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase() }).format(paise / 100);
@@ -40,8 +41,10 @@ export default function CheckoutView({ orderId }: { orderId: string }) {
       "This checkout session is no longer active.";
     const paid = order?.status === "paid";
     return (
-      // A paid order prints out as a receipt and gets stamped.
-      <div className={paid ? "receipt" : undefined} style={{ maxWidth: 640, margin: "40px auto", ...card, textAlign: "center" }}>
+      <div style={{ maxWidth: 640, margin: "40px auto", padding: "0 20px" }}>
+      {paid && <CheckoutSteps current="done" />}
+      {/* A paid order prints out as a receipt and gets stamped. */}
+      <div className={paid ? "receipt" : undefined} style={{ ...card, textAlign: "center" }}>
         {paid && (
           <div style={{ marginBottom: 18 }}>
             <span className="paid-stamp">PAID</span>
@@ -66,36 +69,38 @@ export default function CheckoutView({ orderId }: { orderId: string }) {
           {paid ? "Go to my courses" : "Back to cart"} <span className="arr">→</span>
         </Link>
       </div>
+      </div>
     );
   }
 
+  const total = fmt(order.totalCents, order.currency);
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: "10px 40px 60px" }}>
-      <div style={{ font: `800 46px ${DISPLAY}`, letterSpacing: "-.03em", margin: "10px 0 20px" }}>Secure checkout</div>
+      <h1 style={{ font: `800 46px ${DISPLAY}`, letterSpacing: "-.03em", margin: "10px 0 6px" }}>Secure checkout</h1>
+      <div style={{ color: T.muted2, marginBottom: 14 }}>Review your order and pay securely.</div>
+      <CheckoutSteps current="pay" />
       <div style={{ display: "flex", flexWrap: "wrap", gap: 30, alignItems: "flex-start" }}>
         <div style={{ flex: "1 1 460px", ...card }}>
-          <div style={{ font: `800 22px ${DISPLAY}`, marginBottom: 14 }}>Payment</div>
-          <PaymentSlot orderId={orderId} />
-          <div style={{ marginTop: 16, fontSize: 13, color: T.muted, lineHeight: 1.5 }}>
-            🔒 Payments are processed over an encrypted connection. We never see or store your card number.
+          <h2 style={{ font: `800 24px ${DISPLAY}`, margin: "0 0 16px" }}>Payment</h2>
+          <div style={{ display: "flex", gap: 20, alignItems: "center", marginBottom: 18 }}>
+            <div className="rc-lock" aria-hidden>
+              <div className="sh" />
+              <div className="bd" />
+            </div>
+            <div>
+              <div style={{ font: `800 19px ${DISPLAY}` }}>Your payment is protected</div>
+              <div style={{ fontSize: 14, color: T.muted, marginTop: 4, lineHeight: 1.5 }}>Your card details are encrypted and never stored on our site.</div>
+            </div>
           </div>
+          <PaymentSlot orderId={orderId} total={total} onCancel={cancel} />
         </div>
 
-        <div style={{ flex: "0 0 380px", maxWidth: "100%", ...card }}>
-          <div style={{ font: `800 22px ${DISPLAY}`, marginBottom: 14 }}>Order summary</div>
-          {order.items.map((i) => (
-            <div key={i.courseId} style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 14, padding: "5px 0", color: T.body }}>
-              <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{i.title}</span>
-              <span>{fmt(i.cents, order.currency)}</span>
-            </div>
-          ))}
-          <div style={{ display: "flex", justifyContent: "space-between", font: `800 24px ${DISPLAY}`, padding: "14px 0", borderTop: "1.5px solid oklch(0.92 0.02 95)", marginTop: 8 }}>
-            <span>Total</span>
-            <span>{fmt(order.totalCents, order.currency)}</span>
-          </div>
-          <button onClick={cancel} className="btn-hover" style={{ width: "100%", border: 0, background: "#fff", color: T.body, fontWeight: 700, fontSize: 15, fontFamily: "inherit", padding: 12, borderRadius: 99, cursor: "pointer" }}>
-            Cancel and return to cart
-          </button>
+        <div style={{ flex: "0 0 380px", maxWidth: "100%" }}>
+          <Receipt
+            subtitle="You’re almost there"
+            lines={order.items.map((i) => ({ key: i.courseId, title: i.title, price: fmt(i.cents, order.currency) }))}
+            total={total}
+          />
         </div>
       </div>
     </div>
@@ -103,7 +108,7 @@ export default function CheckoutView({ orderId }: { orderId: string }) {
 }
 
 /** Sends the buyer to Dodo's hosted payment page. The amount is the server's, not the browser's. */
-function PaymentSlot({ orderId }: { orderId: string }) {
+function PaymentSlot({ orderId, total, onCancel }: { orderId: string; total: string; onCancel: () => void }) {
   const { token } = useAuth();
   const start = useAction(api.dodo.startCheckout);
   const [busy, setBusy] = useState(false);
@@ -125,13 +130,19 @@ function PaymentSlot({ orderId }: { orderId: string }) {
 
   return (
     <div style={{ background: T.bg, borderRadius: 18, padding: 22, fontSize: 14, lineHeight: 1.6, color: T.body }}>
-      <div style={{ marginBottom: 14 }}>You’ll pay on Dodo Payments’ secure page, then come straight back here.</div>
+      <div style={{ marginBottom: 14 }}>You’ll complete your payment on a secure, encrypted page, then come straight back here.</div>
+      <div style={{ marginBottom: 18 }}>
+        <TrustList />
+      </div>
       {/* While the payment page opens, a purple fill sweeps across the button */}
       <button onClick={pay} disabled={busy} className={`btn-hover${busy ? " busy" : ""}`} style={{ width: "100%", border: 0, background: T.orange, color: busy ? "#fff" : T.ink, fontWeight: 800, fontSize: 16, fontFamily: "inherit", padding: 15, borderRadius: 99, cursor: busy ? "default" : "pointer", transition: "color .3s" }}>
         <i className="btn-fill" aria-hidden />
-        <span style={{ position: "relative" }}>{busy ? "Opening secure payment…" : "Pay now"}</span>
+        <span style={{ position: "relative" }}>{busy ? "Opening secure payment…" : `🔒 Pay ${total} now`}</span>
       </button>
       {err && <div role="alert" style={{ marginTop: 10, color: "#b3261e", fontWeight: 600 }}>{err}</div>}
+      <button onClick={onCancel} disabled={busy} style={{ display: "block", margin: "12px auto 0", background: "none", border: 0, color: T.muted, font: `700 14px ${DISPLAY}`, cursor: "pointer", textDecoration: "underline", textUnderlineOffset: 3 }}>
+        Cancel and return to cart
+      </button>
     </div>
   );
 }
