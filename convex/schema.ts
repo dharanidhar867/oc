@@ -19,6 +19,7 @@ export default defineSchema({
     salt: v.string(),
     hash: v.string(), // PBKDF2-SHA256 of the password; plaintext is never stored
     iterations: v.optional(v.number()), // PBKDF2 work factor used for `hash`; missing = 100k (older accounts, upgraded at next login)
+    dodoCustomerId: v.optional(v.string()), // Dodo's id for this buyer, saved from a verified payment; used to open their billing portal
     createdAt: v.number(),
   })
     .index("by_email", ["email"])
