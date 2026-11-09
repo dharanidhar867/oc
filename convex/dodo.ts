@@ -85,6 +85,40 @@ export const startCheckout = action({
 
 const str = (x: unknown) => (typeof x === "string" && x ? x : undefined);
 
+/** The customer id inside a Dodo payment object (payment.customer.customer_id). */
+const customerIdOf = (p: Record<string, unknown>) => str(((p.customer ?? {}) as Record<string, unknown>).customer_id);
+
+/**
+ * Opens Dodo's hosted billing portal (invoices, payment history, saved details) for the signed-in student.
+ * The customer id always comes from our database for the caller, never from the browser.
+ */
+export const openPortal = action({
+  args: { token: v.string() },
+  handler: async (ctx, { token }): Promise<{ ok: true; url: string } | { ok: false; error: string }> => {
+    const info = await ctx.runQuery(internal.payments.portalInfo, { token });
+    if (!(await ctx.runMutation(internal.payments.allowPortalOpen, { userId: info.userId }))) {
+      return { ok: false, error: "Too many attempts. Please wait a few minutes and try again." };
+    }
+    try {
+      let customerId = info.customerId;
+      if (!customerId && info.paymentId) {
+        // Buyers who paid before we started saving the id: look it up from their own payment, then remember it.
+        customerId = customerIdOf(await dodo(`/payments/${encodeURIComponent(info.paymentId)}`));
+        if (customerId) await ctx.runMutation(internal.payments.saveCustomerId, { userId: info.userId, customerId });
+      }
+      if (!customerId) return { ok: false, error: "No payments yet. Your billing page opens after your first purchase." };
+      const s = await dodo(`/customers/${encodeURIComponent(customerId)}/customer-portal/session`, { method: "POST", body: {} });
+      // The browser navigates straight to this, so only ever an https:// page.
+      const url = typeof s.link === "string" && urlProtocol(s.link) === "https:" ? s.link : null;
+      if (!url) return { ok: false, error: "Could not open your billing page. Please try again." };
+      return { ok: true, url };
+    } catch (e) {
+      console.error("openPortal", e);
+      return { ok: false, error: "Could not open your billing page. Please try again." };
+    }
+  },
+});
+
 /**
  * INTERNAL: called by the verified webhook route. Throwing makes the route answer 500, so Dodo retries.
  * Problems that a retry cannot fix (unknown order, amount mismatch) are logged and swallowed.
@@ -107,6 +141,9 @@ export const handleEvent = internalAction({
         // Buyer paid twice for one order (e.g. two tabs). Access is already granted; the extra payment needs a refund in the Dodo dashboard.
         return console.error("DUPLICATE PAYMENT, refund it in Dodo", { orderId: order._id, paymentId, firstPaymentId: order.paymentId });
       }
+      // Remember Dodo's customer id for this buyer so they can open their billing portal later.
+      const customerId = customerIdOf(p);
+      if (customerId) await ctx.runMutation(internal.payments.saveCustomerId, { userId: order.userId, customerId });
       try {
         await ctx.runMutation(internal.payments.markPaid, {
           orderId: order._id,

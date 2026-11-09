@@ -180,6 +180,33 @@ export const allowCheckoutAttempt = internalMutation({
   handler: async (ctx, { userId }) => await rateLimit(ctx, `checkout:${userId}`, CHECKOUTS_PER_HOUR, HOUR_MS),
 });
 
+/** INTERNAL: remembers Dodo's customer id for the buyer who owns this order (from a verified payment). */
+export const saveCustomerId = internalMutation({
+  args: { userId: v.id("users"), customerId: v.string() },
+  handler: async (ctx, { userId, customerId }) => {
+    const u = await ctx.db.get(userId);
+    if (u && u.dodoCustomerId !== customerId) await ctx.db.patch(userId, { dodoCustomerId: customerId });
+  },
+});
+
+/** INTERNAL: what the billing portal needs for the signed-in student: their saved Dodo customer id, or their latest paid payment to look it up from. */
+export const portalInfo = internalQuery({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const me = await requireRole(ctx, token, "student");
+    if (me.dodoCustomerId) return { userId: me._id, customerId: me.dodoCustomerId, paymentId: undefined };
+    const orders = await ctx.db.query("orders").withIndex("by_userId_and_createdAt", (q) => q.eq("userId", me._id)).order("desc").take(50);
+    const paid = orders.find((o) => (o.status === "paid" || o.status === "refunded") && o.paymentId);
+    return { userId: me._id, customerId: undefined, paymentId: paid?.paymentId };
+  },
+});
+
+/** INTERNAL: per-buyer limit on opening the billing portal (each one is a call to the payment provider). */
+export const allowPortalOpen = internalMutation({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => await rateLimit(ctx, `portal:${userId}`, 20, HOUR_MS),
+});
+
 /** INTERNAL: remembers the gateway's checkout session for an order. */
 export const setCheckout = internalMutation({
   args: { orderId: v.id("orders"), providerRef: v.string(), checkoutUrl: v.string() },

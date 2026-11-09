@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { useQuery } from "convex/react";
+import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { DISPLAY, T } from "@/lib/theme";
 import { useAuth } from "../auth";
@@ -13,12 +14,38 @@ const length = (s: number) => (s >= 3600 ? `${Math.floor(s / 3600)}h ${Math.roun
 export default function MineView() {
   const { token } = useAuth();
   const courses = useQuery(api.learning.myCourses, token ? { token } : "skip");
+  const portal = useAction(api.dodo.openPortal);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+
+  // Opens Dodo's hosted billing page (invoices, payment history). The server decides whose page it is.
+  const openBilling = async () => {
+    if (!token || busy) return;
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await portal({ token });
+      if (r.ok) window.location.href = r.url;
+      else setErr(r.error);
+    } catch {
+      setErr("Could not open your billing page. Please try again.");
+    }
+    setBusy(false);
+  };
 
   return (
     <div>
       <div style={{ background: T.deep, color: "#fff" }}>
-        <div style={{ maxWidth: 1360, margin: "0 auto", padding: "36px 40px 36px" }}>
+        <div style={{ maxWidth: 1360, margin: "0 auto", padding: "36px 40px 36px", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 14 }}>
           <div style={{ font: `800 46px ${DISPLAY}`, letterSpacing: "-.03em" }}>My learning</div>
+          {courses && courses.length > 0 && (
+            <div style={{ textAlign: "right" }}>
+              <button onClick={openBilling} disabled={busy} className="btn-hover" style={{ border: 0, background: T.orange, color: T.ink, fontWeight: 800, fontFamily: "inherit", fontSize: 15, padding: "12px 22px", borderRadius: 99, cursor: busy ? "default" : "pointer" }}>
+                {busy ? "Opening…" : "Billing & invoices"}
+              </button>
+              {err && <div role="alert" style={{ marginTop: 8, fontSize: 13, fontWeight: 600, color: "#ffb4ab" }}>{err}</div>}
+            </div>
+          )}
         </div>
       </div>
       <div style={{ maxWidth: 1360, margin: "0 auto", padding: "30px 40px 60px" }}>
