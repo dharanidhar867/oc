@@ -127,6 +127,53 @@ export async function requireRole(ctx: QueryCtx, token: string | undefined | nul
   return user;
 }
 
+// ---------- Admin passcode gate ----------
+// Admin power needs BOTH a signed-in admin account AND a passcode entered on this session (adminUnlocks row).
+export const ADMIN_UNLOCK_MS = 12 * 60 * 60 * 1000;
+export const ADMIN_MAX_FAILURES = 5;
+export const ADMIN_LOCK_MS = 30 * 60 * 1000;
+
+export async function sessionOf(ctx: QueryCtx, token: string | undefined | null) {
+  if (!token || token.length > 128) return null;
+  const tokenHash = await sha256Hex(token);
+  const session = await ctx.db.query("sessions").withIndex("by_tokenHash", (q) => q.eq("tokenHash", tokenHash)).unique();
+  return session && session.expiresAt >= Date.now() ? session : null;
+}
+
+/** The live unlock for this token's session, or null. */
+export async function getAdminUnlock(ctx: QueryCtx, token: string | undefined | null) {
+  const session = await sessionOf(ctx, token);
+  if (!session) return null;
+  const u = await ctx.db.query("adminUnlocks").withIndex("by_sessionId", (q) => q.eq("sessionId", session._id)).unique();
+  return u && u.expiresAt > Date.now() ? u : null;
+}
+
+/** True only for an approved admin whose session has a live passcode unlock. Never throws. */
+export async function adminUnlocked(ctx: QueryCtx, token: string | undefined | null) {
+  const user = await getViewer(ctx, token);
+  if (!user || user.role !== "admin" || user.status !== "approved") return false;
+  return (await getAdminUnlock(ctx, token)) !== null;
+}
+
+/** Guard for every admin function: signed-in admin account AND passcode unlock on this session. */
+export async function requireAdmin(ctx: QueryCtx, token: string | undefined | null) {
+  const user = await requireRole(ctx, token, "admin");
+  if (user.status !== "approved") throw new ConvexError("You don't have permission to do that.");
+  if (!(await getAdminUnlock(ctx, token))) throw new ConvexError("Admin passcode required.");
+  return user;
+}
+
+/** Passcode is stored only as a hash in the ADMIN_PASSCODE_HASH env var: "pbkdf2$<iterations>$<saltHex>$<hashHex>". */
+export async function checkPasscode(passcode: string) {
+  const parts = (process.env.ADMIN_PASSCODE_HASH ?? "").split("$");
+  const iterations = Number(parts[1]);
+  const okShape =
+    parts.length === 4 && parts[0] === "pbkdf2" && Number.isInteger(iterations) && iterations >= 100_000 && /^([0-9a-f]{2}){8,}$/.test(parts[2]) && /^[0-9a-f]{64}$/.test(parts[3]);
+  if (!okShape) return "not_configured" as const; // fail closed: no passcode configured = nobody can unlock
+  const { hash } = await hashPassword(passcode, parts[2], iterations);
+  return safeEqual(hash, parts[3]) ? ("ok" as const) : ("wrong" as const);
+}
+
 export const toSession = (u: Doc<"users">) => ({
   id: u._id as string,
   name: u.name,

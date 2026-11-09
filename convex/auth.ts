@@ -248,7 +248,11 @@ export const logOut = mutation({
     if (token.length > 128) return;
     const tokenHash = await sha256Hex(token);
     const session = await ctx.db.query("sessions").withIndex("by_tokenHash", (q) => q.eq("tokenHash", tokenHash)).unique();
-    if (session) await ctx.db.delete(session._id);
+    if (session) {
+      const u = await ctx.db.query("adminUnlocks").withIndex("by_sessionId", (q) => q.eq("sessionId", session._id)).unique();
+      if (u) await ctx.db.delete(u._id);
+      await ctx.db.delete(session._id);
+    }
   },
 });
 
