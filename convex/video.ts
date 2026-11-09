@@ -12,7 +12,7 @@ import type { Doc } from "./_generated/dataModel";
 import type { MutationCtx } from "./_generated/server";
 import { mutation } from "./_generated/server";
 import { owns } from "./learning";
-import { getViewer, rateLimit } from "./model";
+import { adminUnlocked, getViewer, rateLimit } from "./model";
 import { PLAYER_BASE } from "./uploads";
 
 const MIN_TTL_S = 20 * 60;
@@ -68,7 +68,7 @@ export const play = mutation({
   handler: async (ctx, { token, kind, id }): Promise<Result> => {
     const me = await getViewer(ctx, token);
     const viewer = me && me.status !== "suspended" ? me : null;
-    const isAdmin = viewer?.role === "admin";
+    const isAdmin = viewer?.role === "admin" && (await adminUnlocked(ctx, token)); // admin power also needs the passcode unlock
     const isInstructorOf = (c: Doc<"submissions">) => viewer?.role === "instructor" && viewer.status === "approved" && c.instructorId === viewer._id;
 
     if (kind === "promo") {

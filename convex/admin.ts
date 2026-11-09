@@ -3,7 +3,19 @@ import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import { mutation, query } from "./_generated/server";
 import { MIN_COURSE_SECONDS, MIN_LESSONS } from "./limits";
-import { requireRole } from "./model";
+import {
+  ADMIN_LOCK_MS,
+  ADMIN_MAX_FAILURES,
+  ADMIN_UNLOCK_MS,
+  adminUnlocked,
+  checkPasscode,
+  getAdminUnlock,
+  rateCount,
+  rateLimit,
+  requireAdmin,
+  requireRole,
+  sessionOf,
+} from "./model";
 import { deleteCourse, loadTree } from "./tree";
 
 const audit = (ctx: MutationCtx, admin: string, action: string, target: string) =>
@@ -15,10 +27,69 @@ const cleanReason = (r: string | undefined) => {
   return t;
 };
 
+/** Passcode-gate state for the console. Says "locked" to everyone who isn't an unlocked admin (reveals nothing). */
+export const unlockStatus = query({
+  args: { token: v.optional(v.string()) },
+  handler: async (ctx, { token }) => {
+    if (!(await adminUnlocked(ctx, token))) return { unlocked: false as const };
+    const u = await getAdminUnlock(ctx, token);
+    return u ? { unlocked: true as const, expiresAt: u.expiresAt } : { unlocked: false as const };
+  },
+});
+
+/**
+ * Enter the admin passcode. It is checked here, on the server, against a hash held in the environment.
+ * Wrong guesses are counted per admin account and site-wide; past the limit the gate locks for a while whatever is typed.
+ * Returns (never throws) so that failed attempts are actually recorded.
+ */
+export const unlock = mutation({
+  args: { token: v.string(), passcode: v.string() },
+  handler: async (ctx, { token, passcode }): Promise<{ ok: true; expiresAt: number } | { ok: false; error: string }> => {
+    const admin = await requireRole(ctx, token, "admin"); // must already be a signed-in, approved admin
+    const session = await sessionOf(ctx, token);
+    if (!session) return { ok: false, error: "Please log in again." };
+    const key = `adminunlock:${admin._id}`;
+    const globalKey = "adminunlock:global";
+    if ((await rateCount(ctx, key, ADMIN_LOCK_MS)) >= ADMIN_MAX_FAILURES || (await rateCount(ctx, globalKey, ADMIN_LOCK_MS)) >= ADMIN_MAX_FAILURES * 4) {
+      return { ok: false, error: "Too many wrong attempts. Try again in 30 minutes." };
+    }
+    const wrong = { ok: false as const, error: "Incorrect passcode." };
+    if (passcode.length === 0 || passcode.length > 200) return wrong;
+    const r = await checkPasscode(passcode);
+    if (r === "not_configured") return { ok: false, error: "The admin passcode hasn't been set up on the server yet." };
+    if (r === "wrong") {
+      await rateLimit(ctx, key, Number.MAX_SAFE_INTEGER, ADMIN_LOCK_MS); // only counts
+      await rateLimit(ctx, globalKey, Number.MAX_SAFE_INTEGER, ADMIN_LOCK_MS);
+      await audit(ctx, admin.email, "passcode_failed", "admin console");
+      return wrong;
+    }
+    const bucket = await ctx.db.query("rateBuckets").withIndex("by_key", (q) => q.eq("key", key)).unique();
+    if (bucket) await ctx.db.delete(bucket._id);
+    const old = await ctx.db.query("adminUnlocks").withIndex("by_sessionId", (q) => q.eq("sessionId", session._id)).unique();
+    if (old) await ctx.db.delete(old._id);
+    const now = Date.now();
+    const expiresAt = now + ADMIN_UNLOCK_MS;
+    await ctx.db.insert("adminUnlocks", { sessionId: session._id, createdAt: now, expiresAt });
+    await audit(ctx, admin.email, "console_unlocked", "admin console");
+    return { ok: true, expiresAt };
+  },
+});
+
+/** Lock the console again on this session (the login itself stays). */
+export const lock = mutation({
+  args: { token: v.string() },
+  handler: async (ctx, { token }) => {
+    const session = await sessionOf(ctx, token);
+    if (!session) return;
+    const u = await ctx.db.query("adminUnlocks").withIndex("by_sessionId", (q) => q.eq("sessionId", session._id)).unique();
+    if (u) await ctx.db.delete(u._id);
+  },
+});
+
 export const listInstructors = query({
   args: { token: v.string(), status: v.optional(v.union(v.literal("approved"), v.literal("pending"), v.literal("rejected"), v.literal("suspended"))) },
   handler: async (ctx, { token, status }) => {
-    await requireRole(ctx, token, "admin");
+    await requireAdmin(ctx, token);
     const rows = status
       ? await ctx.db.query("users").withIndex("by_role_and_status", (q) => q.eq("role", "instructor").eq("status", status)).take(500)
       : await ctx.db.query("users").withIndex("by_role_and_status", (q) => q.eq("role", "instructor")).take(500);
@@ -32,7 +103,7 @@ export const listInstructors = query({
 export const decideApplication = mutation({
   args: { token: v.string(), userId: v.id("users"), decision: v.union(v.literal("approved"), v.literal("rejected")), reason: v.optional(v.string()) },
   handler: async (ctx, { token, userId, decision, reason }) => {
-    const admin = await requireRole(ctx, token, "admin");
+    const admin = await requireAdmin(ctx, token);
     const u = await ctx.db.get(userId);
     if (!u || u.role !== "instructor") throw new ConvexError("Instructor not found.");
     if (u.status === "suspended") throw new ConvexError("Reinstate this instructor first.");
@@ -45,7 +116,7 @@ export const decideApplication = mutation({
 export const setSuspended = mutation({
   args: { token: v.string(), userId: v.id("users"), suspended: v.boolean() },
   handler: async (ctx, { token, userId, suspended }) => {
-    const admin = await requireRole(ctx, token, "admin");
+    const admin = await requireAdmin(ctx, token);
     const u = await ctx.db.get(userId);
     if (!u || u.role !== "instructor") throw new ConvexError("Instructor not found.");
     await ctx.db.patch(userId, { status: suspended ? "suspended" : "approved" });
@@ -63,7 +134,7 @@ export const setSuspended = mutation({
 export const listSubmissions = query({
   args: { token: v.string(), status: v.union(v.literal("in_review"), v.literal("live")) },
   handler: async (ctx, { token, status }) => {
-    await requireRole(ctx, token, "admin");
+    await requireAdmin(ctx, token);
     const rows = await ctx.db.query("submissions").withIndex("by_status", (q) => q.eq("status", status)).take(200);
     const out = [];
     for (const s of rows) {
@@ -78,7 +149,7 @@ export const listSubmissions = query({
 export const getCourseForReview = query({
   args: { token: v.string(), id: v.id("submissions") },
   handler: async (ctx, { token, id }) => {
-    await requireRole(ctx, token, "admin");
+    await requireAdmin(ctx, token);
     const course = await ctx.db.get(id);
     if (!course) return null;
     const tree = await loadTree(ctx, id);
@@ -89,7 +160,7 @@ export const getCourseForReview = query({
 export const decideLesson = mutation({
   args: { token: v.string(), lessonId: v.id("lessons"), decision: v.union(v.literal("approved"), v.literal("rejected")), reason: v.optional(v.string()) },
   handler: async (ctx, { token, lessonId, decision, reason }) => {
-    const admin = await requireRole(ctx, token, "admin");
+    const admin = await requireAdmin(ctx, token);
     const l = await ctx.db.get(lessonId);
     const course = l && (await ctx.db.get(l.courseId));
     if (!l || !course || (course.status !== "in_review" && course.status !== "live")) throw new ConvexError("This lesson isn’t awaiting review.");
@@ -102,7 +173,7 @@ export const decideLesson = mutation({
 export const decideCourse = mutation({
   args: { token: v.string(), id: v.id("submissions"), decision: v.union(v.literal("live"), v.literal("rejected")), reason: v.optional(v.string()) },
   handler: async (ctx, { token, id, decision, reason }) => {
-    const admin = await requireRole(ctx, token, "admin");
+    const admin = await requireAdmin(ctx, token);
     const s = await ctx.db.get(id);
     if (!s || s.status !== "in_review") throw new ConvexError("This course isn't awaiting review.");
     const why = decision === "rejected" ? cleanReason(reason) : undefined;
@@ -119,7 +190,7 @@ export const decideCourse = mutation({
 export const takeDown = mutation({
   args: { token: v.string(), id: v.id("submissions"), reason: v.string() },
   handler: async (ctx, { token, id, reason }) => {
-    const admin = await requireRole(ctx, token, "admin");
+    const admin = await requireAdmin(ctx, token);
     const s = await ctx.db.get(id);
     if (!s || s.status !== "live") throw new ConvexError("This course isn't live.");
     const why = cleanReason(reason);
@@ -131,7 +202,7 @@ export const takeDown = mutation({
 export const listAudit = query({
   args: { token: v.string() },
   handler: async (ctx, { token }) => {
-    await requireRole(ctx, token, "admin");
+    await requireAdmin(ctx, token);
     const rows = await ctx.db.query("audit").withIndex("by_at").order("desc").take(200);
     return rows.map((a) => ({ id: a._id as string, at: a.at, admin: a.admin, action: a.action, target: a.target }));
   },

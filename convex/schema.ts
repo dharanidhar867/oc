@@ -35,6 +35,14 @@ export default defineSchema({
     .index("by_tokenHash", ["tokenHash"])
     .index("by_userId", ["userId"]),
 
+  // The admin passcode gate. One row per admin session that has entered the passcode; admin functions refuse to run
+  // without a live row for the caller's own session, so a stolen login alone (or a new device) gets nothing.
+  adminUnlocks: defineTable({
+    sessionId: v.id("sessions"),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+  }).index("by_sessionId", ["sessionId"]),
+
   // Brute-force protection: after repeated failures on an identifier, logging in needs a CAPTCHA (no hard lock-out,
   // so an attacker can't lock a real user out just by typing wrong passwords).
   loginAttempts: defineTable({

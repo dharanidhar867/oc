@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import AdminConsole from "@/components/views/AdminConsole";
+import AdminGate from "@/components/views/AdminGate";
 import { RequireAuth } from "@/components/auth";
 
 export const metadata: Metadata = { title: "Admin console — QuickAI", robots: { index: false } };
@@ -7,7 +8,9 @@ export const metadata: Metadata = { title: "Admin console — QuickAI", robots: 
 export default function Page() {
   return (
     <RequireAuth role="admin">
-      <AdminConsole />
+      <AdminGate>
+        <AdminConsole />
+      </AdminGate>
     </RequireAuth>
   );
 }
